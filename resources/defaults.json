@@ -1,0 +1,251 @@
+{
+  "title": "我的秘密基地",
+  "showTitle": true,
+  "logo": "",
+  "logoIcon": "",
+  "tabIcon": "",
+  "themeColorTarget": "none",
+  "showSearch": true,
+  "searchPlaceholder": "Search or command",
+  "showNewNoteButton": true,
+  "newNoteButtonMode": "newNote",
+  "searchContents": true,
+  "searchEngine": "builtin",
+  "backgroundKind": "default",
+  "backgroundValue": "",
+  "backgroundOpacity": 0.35,
+  "backgroundBlur": 2,
+  "backgroundLayout": "full",
+  "bannerHeight": 220,
+  "bannerFade": true,
+  "bannerFullWidth": false,
+  "openOnStartup": true,
+  "replaceNewTabs": true,
+  "focusSearchOnOpen": false,
+  "liveRefresh": false,
+  "mobileSearchOnly": false,
+  "showMobileActionBar": true,
+  "mobileActionButtons": [
+    {
+      "id": "action-new-note",
+      "label": "新建笔记",
+      "icon": "plus",
+      "type": "command",
+      "target": "carrot-home:new-note"
+    },
+    {
+      "id": "action-new-drawing",
+      "label": "新建白板",
+      "icon": "pen-tool",
+      "type": "command",
+      "target": "carrot-home:new-drawing"
+    },
+    {
+      "id": "action-record-voice",
+      "label": "录音",
+      "icon": "mic",
+      "type": "command",
+      "target": "carrot-home:record-voice"
+    },
+    {
+      "id": "action-daily-note",
+      "label": "今日日记",
+      "icon": "calendar",
+      "type": "command",
+      "target": "carrot-home:open-daily-note"
+    }
+  ],
+  "disableExternalCalls": false,
+  "openIn": "tab",
+  "openInOverrides": {
+    "link": "default",
+    "search": "default",
+    "card": "default",
+    "newNote": "default"
+  },
+  "openFromOutside": "same",
+  "lowPower": false,
+  "lowPowerBackgroundColor": "#4a4459",
+  "compact": false,
+  "arrangeButtonVisibility": "always",
+  "dashboardSwitcherVisibility": "always",
+  "cardOpacity": 0.5,
+  "cardBlur": 7,
+  "cardRadius": 14,
+  "cardBorderWidth": 1,
+  "hiddenFilters": [
+    "bases",
+    "presentations",
+    "3d",
+    "spreadsheets"
+  ],
+  "dashboards": [
+    {
+      "id": "dash-mtcqviyf-8009",
+      "name": "Home",
+      "cards": [
+        {
+          "kind": "clock",
+          "title": "",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 2,
+          "id": "card-mtcqx5it-0-2039",
+          "fx": 0,
+          "fw": 0.20125,
+          "fy": 0,
+          "fh": 118,
+          "clock": {
+            "mode": "digital",
+            "hourFormat": "24"
+          },
+          "commands": []
+        },
+        {
+          "kind": "tasks",
+          "title": "Tasks",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 5,
+          "tasks": {
+            "source": "tasknotes",
+            "layout": "kanban",
+            "kanbanDoneColumns": [
+              "done"
+            ],
+            "kanbanOrder": [
+              "open",
+              "in-progress",
+              "done",
+              "none"
+            ],
+            "kanbanColumnSort": {
+              "done": {
+                "reverse": true
+              }
+            }
+          },
+          "id": "card-mtcqx5it-2-1584",
+          "fx": 0.21140939597315436,
+          "fw": 0.7885906040268457,
+          "fy": 0,
+          "fh": 625
+        },
+        {
+          "kind": "schedule",
+          "title": "Calendar",
+          "x": 0,
+          "y": 7,
+          "w": 8,
+          "h": 6,
+          "id": "card-mtcqx5it-3-9810",
+          "fx": 0,
+          "fw": 0.20125,
+          "fy": 117,
+          "fh": 358,
+          "schedule": {
+            "taskNotes": {
+              "enabled": true,
+              "scheduled": true,
+              "due": true,
+              "recurring": true,
+              "timeblocks": true,
+              "completed": true,
+              "archived": false,
+              "allowComplete": true,
+              "subscriptions": true,
+              "colorBy": "status"
+            }
+          }
+        },
+        {
+          "kind": "recent",
+          "title": "Recent",
+          "count": 10,
+          "x": 8,
+          "y": 7,
+          "w": 4,
+          "h": 4,
+          "id": "card-mtcqx5it-4-7418",
+          "fx": 0,
+          "fw": 0.20067796610169492,
+          "fy": 641,
+          "fh": 454
+        },
+        {
+          "kind": "leaf",
+          "title": "项目甘特图",
+          "leafView": {
+            "viewType": "hearth-gantt-view",
+            "hideHeader": true
+          },
+          "x": 0,
+          "y": 13,
+          "w": 12,
+          "h": 6,
+          "id": "card-hearth-gantt-1787917216",
+          "fx": 0.21143847487001732,
+          "fw": 0.7885615251299827,
+          "fy": 641,
+          "fh": 571
+        },
+        {
+          "kind": "bookmarks",
+          "title": "Bookmarks",
+          "x": 0,
+          "y": 19,
+          "w": 4,
+          "h": 3,
+          "id": "card-mtcqx5it-6-9500",
+          "fx": 0,
+          "fw": 0.20125,
+          "fy": 491,
+          "fh": 134
+        }
+      ],
+      "fitToPage": false
+    }
+  ],
+  "activeDashboardId": "dash-mtcqviyf-8009",
+  "pinnedCards": [],
+  "gridColumns": 12,
+  "rowHeight": 92,
+  "favorites": [],
+  "fitToPage": true,
+  "taskNotesStatusField": "status",
+  "taskNotesDueField": "due",
+  "taskNotesPriorityField": "priority",
+  "taskNotesDoneValue": "done",
+  "taskFieldsEnabled": false,
+  "taskFields": [],
+  "customFileIcons": true,
+  "iconizeIconProperty": "icon",
+  "maxWidth": 1600,
+  "lastSeenVersion": "2.0.1",
+  "setupStatus": "done",
+  "homeToolbarActions": [
+    {
+      "id": "daily-note",
+      "label": "打开/创建今天的日记",
+      "icon": "calendar-days",
+      "commandId": "daily-notes",
+      "enabled": true
+    },
+    {
+      "id": "tasknotes-pomodoro",
+      "label": "打开 TaskNotes 番茄钟",
+      "icon": "timer",
+      "commandId": "tasknotes:open-pomodoro-view",
+      "enabled": true
+    },
+    {
+      "id": "command-mtjkyvmx",
+      "label": "TaskNotes: 打开日历视图",
+      "icon": "circle-check-big",
+      "commandId": "tasknotes:open-advanced-calendar-view",
+      "enabled": false
+    }
+  ]
+}

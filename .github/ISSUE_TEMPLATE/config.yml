@@ -1,8 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: 🌍 Contributing a translation
-    url: https://github.com/ondreu/Hearth/blob/main/CONTRIBUTING.md#-translations
-    about: Translations are welcome as pull requests — here's the walkthrough.
-  - name: 💬 Questions & general discussion
-    url: https://github.com/ondreu/Hearth/discussions
-    about: For usage questions and open-ended discussion, please use Discussions.
