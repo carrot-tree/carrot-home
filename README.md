@@ -6,9 +6,9 @@
 
 本仓库由已 Fork 的 `carrot-tree/carrothome` 改名而来，保留与 [ondreu/Hearth](https://github.com/ondreu/Hearth) 的 Fork 关系，已迁入 Carrot Home 2.0.1 代码。旧独立仓库保留在 [carrot-tree/carrot-home-legacy](https://github.com/carrot-tree/carrot-home-legacy)，旧 Release 与 Issue 等记录仍属于旧仓库。
 
-**本次只迁移代码，尚未在新仓库发布 Release。** 下方 BRAT 安装与更新步骤须等本仓库提供对应 Release 和三个安装附件后才可用；根目录中的 2.0.1 代码不代表已发布版本。旧 1.1.3 安装附件仍可从[旧仓库 Release](https://github.com/carrot-tree/carrot-home-legacy/releases/tag/1.1.3)取得。
+**安装与更新请使用本仓库的 [2.0.1 Release](https://github.com/carrot-tree/carrot-home/releases/tag/2.0.1)**，其中包含 `main.js`、`manifest.json`、`styles.css` 三个独立安装附件。旧 1.1.3 安装附件仍保留在[旧仓库 Release](https://github.com/carrot-tree/carrot-home-legacy/releases/tag/1.1.3)。
 
-已有 BRAT 条目若跟踪 `carrot-tree/carrot-home`，现在会指向这个新 Fork；发布前无法从这里取得更新。固定旧版本的条目也无法在新仓库找到旧 Release。已安装的本地插件仍保留，可继续使用。待新 Release 单独确认发布后，再核对 BRAT 跟踪地址与版本；本次不改动已有库的 BRAT 配置或插件数据。
+已有 BRAT 条目若跟踪 `carrot-tree/carrot-home`，现在会指向这个新 Fork；选择跟踪最新版本即可检查新仓库的更新。固定旧版本的条目无法在新仓库找到旧 Release，请根据需要切换到最新版本或明确选择 2.0.1。不要通过卸载插件来切换仓库；升级前备份插件目录并保留 `data.json`。仓库迁移与发布不会替你修改已有库的 BRAT 配置或插件数据。
 
 ## 通过 BRAT 安装与更新
 
