@@ -1,0 +1,62 @@
+[
+  {
+    "path": "Carrot Home 示例/开始使用.md",
+    "content": "# 欢迎来到 Carrot Home\n\n这是一套可离线使用的示例工作台。示例均为虚构，可编辑、勾选或删除。\n\n- Home：左侧时钟、日历、书签和最近笔记；右侧任务看板与项目甘特图。\n- 项目甘特图的新增项目入口可创建制作流程。\n- 双击/点击任务可按 TaskNotes 设置编辑或打开笔记；拖到其他看板列可修改状态。\n- 日期在首次启用时自动设为当天附近。以后重启不会重置任务，也不会补回你删除的示例。\n- 新任务默认放在 `Carrot Home 示例/任务`；可在 TaskNotes 设置里更改目录。\n- 这些示例只在本地读写；云日历、微信读书等账号功能需使用者自行配置，不附任何原作者凭据。\n\n## 快速试用\n\n1. 将“脚本-第一支示例视频”从进行中拖到已完成。\n2. 打开项目甘特图，调整一项任务日期。\n3. 在项目甘特图里新建自己的项目和任务。\n\n[[Carrot Home 示例/项目/第一支示例视频]] · [[Carrot Home 示例/项目/整理个人知识库]]\n\n## 布局与快捷功能\n\n默认板块位置、大小、间距和颜色来自原工作台。标题改为“我的秘密基地”；顶部 Resojot 与 Thino 图标已去掉。原布局随窗口宽度自适应，内容较长时向下滚动。\n\n移动端的画板按钮在未安装 Excalidraw 时使用 Obsidian 自带白板；录音使用核心录音机。日记、书签、白板、录音机和数据库需要开启对应核心插件。\n\n## 示例与真实工作\n\n删除示例前，可以先建立自己的项目与任务。所有示例都集中在本目录。工作台查询会读取库内带 task 标签的任务和 type: video 的项目；用于已有库时，也会显示符合这些字段的真实内容。\n"
+  },
+  {
+    "path": "Carrot Home 示例/项目/第一支示例视频.md",
+    "content": "---\ntitle: 第一支示例视频\ncarrotProject: true\nproject_workflow: video\nproject_status: active\ntype: video\nvideo_stage: script\ntarget_publish: {{DAY:7}}\ntags: [示例项目]\n---\n\n# 第一支示例视频\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"
+  },
+  {
+    "path": "Carrot Home 示例/项目/整理个人知识库.md",
+    "content": "---\ntitle: 整理个人知识库\ncarrotProject: true\nproject_workflow: general\nproject_status: active\ntags: [示例项目]\n---\n\n# 整理个人知识库\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"
+  },
+  {
+    "path": "Carrot Home 示例/项目/已发布示例视频.md",
+    "content": "---\ntitle: 已发布示例视频\ncarrotProject: true\nproject_workflow: video\nproject_status: completed\ntype: video\nvideo_stage: published\ntarget_publish: {{DAY:-1}}\npublished_date: {{DAY:-1}}\ntags: [示例项目]\n---\n\n# 已发布示例视频\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"
+  },
+  {
+    "path": "Carrot Home 示例/任务/选题-第一支示例视频.md",
+    "content": "---\ntitle: 选题-第一支示例视频\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:-1}}\ndue: {{DAY:0}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ncompletedDate: {{DAY:0}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"
+  },
+  {
+    "path": "Carrot Home 示例/任务/脚本-第一支示例视频.md",
+    "content": "---\ntitle: 脚本-第一支示例视频\nstatus: in-progress\npriority: high\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:1}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"
+  },
+  {
+    "path": "Carrot Home 示例/任务/拍摄-第一支示例视频.md",
+    "content": "---\ntitle: 拍摄-第一支示例视频\nstatus: open\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:1}}\ndue: {{DAY:2}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"
+  },
+  {
+    "path": "Carrot Home 示例/任务/剪辑-第一支示例视频.md",
+    "content": "---\ntitle: 剪辑-第一支示例视频\nstatus: open\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:2}}\ndue: {{DAY:4}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"
+  },
+  {
+    "path": "Carrot Home 示例/任务/发布-第一支示例视频.md",
+    "content": "---\ntitle: 发布-第一支示例视频\nstatus: open\npriority: low\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:5}}\ndue: {{DAY:6}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"
+  },
+  {
+    "path": "Carrot Home 示例/任务/整理收件箱.md",
+    "content": "---\ntitle: 整理收件箱\nstatus: in-progress\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:2}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"
+  },
+  {
+    "path": "Carrot Home 示例/任务/建立三个常用分类.md",
+    "content": "---\ntitle: 建立三个常用分类\nstatus: open\npriority: low\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:2}}\ndue: {{DAY:4}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"
+  },
+  {
+    "path": "Carrot Home 示例/任务/阅读工作台使用说明.md",
+    "content": "---\ntitle: 阅读工作台使用说明\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:0}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ncompletedDate: {{DAY:0}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"
+  },
+  {
+    "path": "Carrot Home 示例/任务/发布-已发布示例视频.md",
+    "content": "---\ntitle: 发布-已发布示例视频\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:-2}}\ndue: {{DAY:-1}}\nprojects:\n  - \"[[Carrot Home 示例/项目/已发布示例视频]]\"\ncompletedDate: {{DAY:-1}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"
+  },
+  {
+    "path": "Carrot Home 示例/任务/想到一个新点子，稍后整理.md",
+    "content": "---\ntitle: 想到一个新点子，稍后整理\nstatus: none\npriority: none\ntags: [task, CarrotHome示例]\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"
+  },
+  {
+    "path": "Carrot Home 示例/选题/示例-分享我的工作台.md",
+    "content": "---\ntitle: 示例-分享我的工作台\ntype: video\nvideo_stage: idea\nproject_status: active\ntags: [选题]\n---\n\n# 分享我的工作台\n\n## 为什么想做\n\n把一个好用的小方法讲清楚。\n\n## 提纲与脚本\n\n- 遇到了什么问题\n- 我的解决方法\n- 观众可以马上试的一个动作\n"
+  }
+]

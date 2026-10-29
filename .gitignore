@@ -1,20 +1,8 @@
-# build / deps
-node_modules/
-main.js
-*.js.map
-
-# editor / os
 .DS_Store
-.idea/
-.vscode/
-
-# obsidian local test vault (if any)
-test-vault/
-
-# obsidian plugin runtime data (local install state, not source)
+node_modules/
+.obsidian/
 data.json
-
-# gallery server build output and local database
-server/dist/
-server/data/
-server/.env
+share-install.json
+*.log
+.env
+.env.*

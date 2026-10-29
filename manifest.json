@@ -1,11 +1,11 @@
 {
-	"id": "hearth",
-	"name": "Hearth",
-	"version": "3.5.0",
-	"minAppVersion": "1.8.7",
-	"description": "A beautiful, customizable home screen for your vault — search, dashboard, and launcher in one.",
-	"author": "ondreu",
-	"authorUrl": "https://github.com/ondreu",
-	"fundingUrl": "https://ko-fi.com/B7K822EW68",
-	"isDesktopOnly": false
+  "id": "carrot-home",
+  "name": "Carrot Home",
+  "version": "2.0.1",
+  "minAppVersion": "1.12.2",
+  "description": "单页 Obsidian 首页：时钟、日历、书签、最近笔记、TaskNotes 看板与项目甘特图。基于 Hearth 定制，支持 BRAT。",
+  "author": "Claudian (fork of ondreu/hearth)",
+  "authorUrl": "https://github.com/ondreu",
+  "fundingUrl": "https://ko-fi.com/B7K822EW68",
+  "isDesktopOnly": false
 }
