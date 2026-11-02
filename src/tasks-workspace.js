@@ -74,8 +74,91 @@ function carrotTaskWorkspaceCore() {
   return {NONE, array, defaults, normalize, accounts, matches, prefill, dateMatch, clearFilters, normalizeCardSize, normalizePresentation, focusMatch, focusOptions, agendaGroup, agendaOptions, taskDay};
 }
 
+/* Keep the timer owned by TaskNotes: no parallel timer or session reassignment. */
+function carrotTaskPomodoroBridge() {
+  const pending = new WeakSet();
+  const available = plugin => typeof plugin?.pomodoroService?.getState === 'function' && typeof plugin?.pomodoroService?.startPomodoro === 'function';
+  const currentAction = (state, path) => state.currentSession || state.isRunning
+    ? state.currentSession?.type === 'work' && state.currentSession.taskPath === path
+      ? state.isRunning ? 'current' : 'resume'
+      : 'conflict'
+    : 'start';
+  function requireTaskFile(plugin, path) {
+    const vault = plugin.app?.vault;
+    // Fail closed for timer mutations if file verification is unavailable.
+    // Existing sessions can still be viewed without this API. TFile exposes
+    // extension; TFolder exposes children, so no bundled Obsidian class is needed.
+    if (typeof vault?.getAbstractFileByPath !== 'function') throw new Error('无法确认任务文件，请重新加载 TaskNotes 后重试');
+    const file = typeof path === 'string' && path ? vault.getAbstractFileByPath(path) : null;
+    if (!file || file.path !== path || typeof file.extension !== 'string' || 'children' in file) throw new Error('任务已移动或不存在，请刷新任务列表');
+  }
+  async function run(plugin, path) {
+    if (!available(plugin)) throw new Error('TaskNotes 番茄钟服务不可用，请启用或更新 TaskNotes');
+    const service = plugin.pomodoroService;
+    if (pending.has(service)) return 'busy';
+    pending.add(service);
+    try {
+      let action = currentAction(service.getState(), path), task;
+      if (action === 'start') {
+        requireTaskFile(plugin, path);
+        if (typeof plugin.cacheManager?.getTaskInfo !== 'function') throw new Error('无法读取 TaskNotes 任务');
+        task = await plugin.cacheManager.getTaskInfo(path);
+        if (!task || task.path !== path) throw new Error('任务已移动或不存在，请刷新任务列表');
+        // Reading the task yields; another TaskNotes entry point may have started
+        // a session meanwhile. Recheck before any timer mutation.
+        action = currentAction(service.getState(), path);
+      }
+      if (action === 'start') {
+        // A cached TaskInfo can outlive deletion/rename while the lookup awaits.
+        requireTaskFile(plugin, path);
+        await service.startPomodoro(task);
+      }
+      else if (action === 'resume') {
+        requireTaskFile(plugin, path);
+        if (typeof service.resumePomodoro !== 'function') throw new Error('当前 TaskNotes 版本无法继续番茄钟');
+        await service.resumePomodoro();
+      }
+      if (action === 'start' || action === 'resume') {
+        const after = service.getState();
+        if (currentAction(after, path) !== 'current') throw new Error('番茄钟未启动，请在 TaskNotes 中检查当前计时');
+      }
+      return {start:'started',resume:'resumed'}[action] || action;
+    } finally { pending.delete(service); }
+  }
+  return {available, currentAction, run, isPending: plugin => !!plugin?.pomodoroService && pending.has(plugin.pomodoroService)};
+}
+
+// A task's path and control identity survive title/account/timer-label changes.
+// Keep this independent of the renderer so refreshes can recover focus without
+// opening a task or moving the workspace's scroll position.
+function carrotTaskFocus() {
+  const controls = ['chw-account-chip','chw-pomodoro','hearth-task-date-btn','hearth-task-check-recurring','hearth-task-check'];
+  function capture(container, focused) {
+    if (!focused || !container.contains(focused)) return null;
+    const card = focused.closest('.hearth-kanban-card');
+    if (!card?.dataset.taskPath) return null;
+    let selector = '';
+    if (focused !== card) {
+      const control = controls.find(name => focused.classList.contains(name));
+      if (control) selector = `.${control}`;
+      else if (focused.getAttribute('aria-label')) selector = `[aria-label="${CSS.escape(focused.getAttribute('aria-label'))}"]`;
+    }
+    return {path:card.dataset.taskPath,selector};
+  }
+  function restore(container, saved, fallback) {
+    if (!saved) return;
+    const card = container.querySelector(`.hearth-kanban-card[data-task-path="${CSS.escape(saved.path)}"]`);
+    const control = saved.selector && card?.querySelector(saved.selector);
+    const target = control && !control.disabled ? control : card || fallback;
+    target?.focus({preventScroll:true});
+  }
+  return {capture,restore};
+}
+
 ;(() => {
   const core = carrotTaskWorkspaceCore(), sessions = new WeakMap();
+  const pomodoro = carrotTaskPomodoroBridge();
+  const taskFocus = carrotTaskFocus();
   const clone = value => JSON.parse(JSON.stringify(value));
   const tn = ctx => ctx.app.plugins.plugins.tasknotes;
   const fm = (ctx, file) => ctx.app.metadataCache.getFileCache(file)?.frontmatter || {};
@@ -120,6 +203,52 @@ function carrotTaskWorkspaceCore() {
     b.addEventListener('click', e => {e.preventDefault(); e.stopPropagation(); callback(e);});
     return b;
   }
+  async function openPomodoro(ctx) {
+    const plugin = tn(ctx);
+    if (typeof plugin?.activatePomodoroView === 'function') return plugin.activatePomodoroView();
+    if (!ctx.app.commands.executeCommandById('tasknotes:open-pomodoro-view')) throw new Error('无法打开 TaskNotes 番茄钟面板');
+  }
+  function syncPomodoroButtons(ctx, container) {
+    const plugin = tn(ctx), service = plugin?.pomodoroService;
+    let timer;
+    try { timer = pomodoro.available(plugin) ? service.getState() : null; } catch { timer = null; }
+    for (const b of container.querySelectorAll('.chw-pomodoro')) {
+      const action = timer ? pomodoro.currentAction(timer, b.dataset.taskPath) : 'unavailable';
+      const active = action === 'current', paused = action === 'resume', busy = pomodoro.isPending(plugin);
+      b.classList.toggle('is-active', active);b.classList.toggle('is-paused', paused);b.classList.toggle('is-busy', busy);
+      b.disabled = busy || b.dataset.completed === 'true';
+      b.setAttribute('aria-busy', String(busy));
+      const label = b.dataset.completed === 'true' ? '已完成任务无需专注' : ({current:'查看正在进行的番茄钟',resume:'继续这个任务的番茄钟',conflict:'查看当前番茄钟',unavailable:'TaskNotes 番茄钟不可用',start:'开始番茄钟'})[action];
+      const remaining = active && Number.isFinite(timer.timeRemaining) ? ` · 剩余 ${Math.floor(timer.timeRemaining/60)}:${String(Math.max(0,timer.timeRemaining%60)).padStart(2,'0')}` : '';
+      b.setAttribute('aria-label', `${label}：${b.dataset.taskTitle}`);b.title = label + remaining;
+    }
+  }
+  function addPomodoro(ctx, task, el, container) {
+    const actions = el.createDiv('chw-task-actions');
+    const date = el.querySelector('.hearth-task-date-btn');if (date) actions.appendChild(date);
+    const control = button(actions, '', async () => {
+      try {
+        const work = pomodoro.run(tn(ctx), task.file.path);syncPomodoroButtons(ctx, container);
+        const result = await work;
+        if (result === 'busy') return;
+        if (result === 'conflict') new x.Notice('已有其他任务或休息中的番茄钟，请先在番茄钟面板中处理当前计时。');
+        if (result === 'started') new x.Notice(`已开始专注：${task.text}`);
+        if (result === 'resumed') new x.Notice(`已继续专注：${task.text}`);
+        try { await openPomodoro(ctx); } catch { new x.Notice('无法打开番茄钟面板，可从 TaskNotes 命令中打开查看。'); }
+      } catch (error) { new x.Notice(`番茄钟：${error.message || '启动失败，请稍后重试'}`); }
+      finally { syncPomodoroButtons(ctx, container); }
+    }, 'chw-pomodoro');
+    Object.assign(control.dataset, {taskPath:task.file.path,taskTitle:task.text,completed:String(!!task.done)});
+    // A line-drawn tomato keeps the same visual weight as the date control.
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    for (const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'16',height:'16',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})) svg.setAttribute(key,value);
+    for (const d of ['M12 7c-2-2-7-1-8 3-2 6 2 10 8 10s10-4 8-10c-1-4-6-5-8-3Z','M12 8c0-3 1-5 3-6','m7 5 5 3 5-3','M7 11c-1 1-1 3 0 4']) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',d);svg.appendChild(path);
+    }
+    control.appendChild(svg);
+    control.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')e.stopPropagation();});
+    for (const event of ['pointerdown','mousedown','dblclick','dragstart']) control.addEventListener(event, e => {e.stopPropagation();if(event==='dragstart')e.preventDefault();});
+  }
   function decorateControl(el, icon, {chevron = false, iconOnly = false, active = false} = {}) {
     const text = el.textContent.replace(/ ▾$/, '');
     el.empty();
@@ -147,7 +276,7 @@ function carrotTaskWorkspaceCore() {
     return section;
   }
   const toggle = (values, id, on) => on ? [...new Set([...values, id])] : values.filter(v => v !== id);
-  class PickModal extends x.Modal {
+  class PickModal extends CarrotHomeModal {
     constructor(app, title, options, selected, submit) { super(app); Object.assign(this, {heading: title, options, selected: [...selected], submit}); }
     onOpen() {
       this.titleEl.setText(this.heading);
@@ -157,7 +286,7 @@ function carrotTaskWorkspaceCore() {
       button(actions, '取消', () => this.close());
     }
   }
-  class NameModal extends x.Modal {
+  class NameModal extends CarrotHomeModal {
     constructor(app, title, value, submit) {super(app); Object.assign(this, {heading: title, value, submit});}
     onOpen() {
       this.titleEl.setText(this.heading);
@@ -167,7 +296,7 @@ function carrotTaskWorkspaceCore() {
     }
   }
   function manageAccounts(ctx, redraw) {
-    const modal = new x.Modal(ctx.app); modal.titleEl.setText('内容账号');
+    const modal = new CarrotHomeModal(ctx.app); modal.titleEl.setText('内容账号');
     const render = () => {
       modal.contentEl.empty();
       modal.contentEl.createEl('p', {text: '账号可以改名，已有任务和项目的关联会保留。'});
@@ -183,7 +312,7 @@ function carrotTaskWorkspaceCore() {
     }; render(); modal.open();
   }
   function accountEditor(ctx, file, tasks, redraw) {
-    const current = fm(ctx, file), modal = new x.Modal(ctx.app);
+    const current = fm(ctx, file), modal = new CarrotHomeModal(ctx.app);
     modal.titleEl.setText(`${file.basename} · 内容账号`);
     const inherited = !Object.prototype.hasOwnProperty.call(current, 'content_accounts');
     let values = core.array(current.content_accounts), inherit = inherited;
@@ -204,7 +333,7 @@ function carrotTaskWorkspaceCore() {
     for (const [id,text] of options) el.createEl('option', {value: id, text});
     el.value = value; el.addEventListener('change', () => change(el.value)); return el;
   }
-  class FilterModal extends x.Modal {
+  class FilterModal extends CarrotHomeModal {
     constructor(ctx, cfg, tasks, apply) {super(ctx.app); Object.assign(this,{ctx,cfg,tasks,apply}); this.filters=clone(state(cfg).filters);}
     onOpen() {
       this.titleEl.setText('筛选任务'); const f=this.filters, ctx=this.ctx;
@@ -220,7 +349,7 @@ function carrotTaskWorkspaceCore() {
     }
   }
   function createTask(ctx,cfg,tasks,redraw,status) {
-    const defaults=core.prefill(state(cfg).filters), modal=new x.Modal(ctx.app), service=tn(ctx)?.taskService;
+    const defaults=core.prefill(state(cfg).filters), modal=new CarrotHomeModal(ctx.app), service=tn(ctx)?.taskService;
     if(!service?.createTask) return new x.Notice('TaskNotes 新建任务服务不可用');
     modal.titleEl.setText('在当前范围新建任务');
     const title=modal.contentEl.createEl('input',{cls:'chw-new-title',attr:{placeholder:'任务标题','aria-label':'任务标题'}});
@@ -249,15 +378,11 @@ function carrotTaskWorkspaceCore() {
     const restoreSearch=oldSearch===document.activeElement;
     const selection=oldSearch?[oldSearch.selectionStart,oldSearch.selectionEnd]:null;
     const focused=document.activeElement;
+    const savedTaskFocus=taskFocus.capture(container,focused);
     let focusSelector='';
     if(container.contains(focused)){
       for(const attr of ['data-focus','data-mode','data-size'])if(focused.hasAttribute(attr))focusSelector=`[${attr}="${CSS.escape(focused.getAttribute(attr))}"]`;
       if(focused.classList.contains('chw-completed-toggle'))focusSelector='.chw-completed-toggle';
-      const taskEl=focused.closest('.hearth-kanban-card');
-      if(taskEl&&focused!==taskEl){
-        const child=focused.getAttribute('aria-label')?`[aria-label="${CSS.escape(focused.getAttribute('aria-label'))}"]`:focused.matches('input')?'input':null;
-        if(child)focusSelector=`.hearth-kanban-card[data-task-path="${CSS.escape(taskEl.dataset.taskPath)}"] ${child}`;
-      }
     }
     const signature=JSON.stringify([s.filters,s.query]);
     // Repository events can replace the entire card body. Keep scroll positions
@@ -301,7 +426,7 @@ function carrotTaskWorkspaceCore() {
     button(actions,'⋯',event=>menuAt(event,menu=>{
       menu.addItem(i=>i.setTitle('管理内容账号').onClick(()=>manageAccounts(ctx,redraw)));
       menu.addItem(i=>i.setTitle('设置项目账号…').onClick(()=>{
-        const options=projectOptions(ctx,tasks).filter(p=>p.file),modal=new x.Modal(ctx.app);modal.titleEl.setText('选择要设置账号的项目');
+        const options=projectOptions(ctx,tasks).filter(p=>p.file),modal=new CarrotHomeModal(ctx.app);modal.titleEl.setText('选择要设置账号的项目');
         const search=modal.contentEl.createEl('input',{attr:{type:'search',placeholder:'搜索项目'}}),list=modal.contentEl.createDiv('chw-options-list');
         for(const p of options)button(list,p.label,()=>{modal.close();accountEditor(ctx,p.file,tasks,redraw);},'chw-project-choice');
         search.addEventListener('input',()=>{for(const b of list.children)b.hidden=!b.textContent.toLocaleLowerCase().includes(search.value.toLocaleLowerCase());});modal.open();
@@ -429,7 +554,9 @@ function carrotTaskWorkspaceCore() {
     const byPath=new Map(matches.map(t=>[t.file.path,t]));
     for(const el of boardHost.querySelectorAll('.hearth-kanban-card')){
       const task=byPath.get(el.dataset.taskPath);if(!task)continue;
+      addPomodoro(ctx,task,el,container);
       const account=button(el,task.workspaceAccounts.length?`${task.workspaceAccounts.map(id=>label(ctx,id)).join(' · ')}${task.workspaceInherited?' · 来自项目':''}`:'未分配账号',()=>accountEditor(ctx,task.file,tasks,redraw),'chw-account-chip');account.title='设置这个任务的内容账号';
+      account.setAttribute('aria-label',`设置内容账号：${task.text}`);
     }
     if(board&&s.presentation==='agenda'){
       const cards=new Map([...board.querySelectorAll('.hearth-kanban-card')].map(el=>[el.dataset.taskPath,el]));
@@ -466,6 +593,15 @@ function carrotTaskWorkspaceCore() {
       }
     }
     boardHost.addEventListener('scroll',()=>{if(container.isConnected)rememberScroll();},{capture:true,passive:true});
+    syncPomodoroButtons(ctx,container);
+    if(!container.__chwPomodoroTick){
+      // Update only controls, retaining task focus and scroll while the timer runs.
+      container.__chwPomodoroTick=window.setInterval(()=>{
+        if(!container.isConnected){clearInterval(container.__chwPomodoroTick);container.__chwPomodoroTick=null;return;}
+        syncPomodoroButtons(ctx,container);
+      },1000);
+      ctx.register?.(()=>clearInterval(container.__chwPomodoroTick));
+    }
     if(container.__chwObserver)container.__chwObserver.disconnect();
     const resize=()=>{const narrow=(card||container).getBoundingClientRect().width<620;container.classList.toggle('chw-narrow',narrow);head?.classList.toggle('chw-narrow-head',narrow);};resize();
     const observer=new ResizeObserver(resize);observer.observe(card||container);container.__chwObserver=observer;
@@ -475,7 +611,8 @@ function carrotTaskWorkspaceCore() {
       ctx.register?.(()=>clearInterval(container.__chwTick));
     }
     if(restoreSearch){search.focus({preventScroll:true});try{search.setSelectionRange(...selection);}catch{}}
-    else if(focusSelector)container.querySelector(focusSelector)?.focus({preventScroll:true});
+    else if(savedTaskFocus)taskFocus.restore(container,savedTaskFocus,search);
+    else if(focusSelector)(container.querySelector(focusSelector)||search).focus({preventScroll:true});
     container.__chwDebug={count:matches.length,total:tasks.length,filters:clone(s.filters),query:s.query,presentation:s.presentation,paths:matches.map(t=>t.file.path)};
   }
   const previousRender=Qy;

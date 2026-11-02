@@ -12470,7 +12470,7 @@ body.hearth-dv-resizing {
 }
 
 /* Give the whole Tasks card a cleaner framed surface over wallpaper. */
-.hearth-view .hearth-card:has(.hearth-kanban) {
+.hearth-view .hearth-card:has(:is(.hearth-kanban,.chw-workspace)) {
   border-color: color-mix(in srgb, var(--hhk-accent) 22%, var(--background-modifier-border));
   background:
     linear-gradient(135deg,
@@ -12481,7 +12481,7 @@ body.hearth-dv-resizing {
     inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
-.hearth-view .hearth-card:has(.hearth-kanban) .hearth-card-head {
+.hearth-view .hearth-card:has(:is(.hearth-kanban,.chw-workspace)) .hearth-card-head {
   min-height: 42px;
   padding: 10px 16px;
   border-bottom-color: color-mix(in srgb, var(--hhk-accent) 18%, transparent);
@@ -12492,7 +12492,7 @@ body.hearth-dv-resizing {
   );
 }
 
-.hearth-view .hearth-card:has(.hearth-kanban) .hearth-card-title {
+.hearth-view .hearth-card:has(:is(.hearth-kanban,.chw-workspace)) .hearth-card-title {
   font-size: 1rem;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -12546,7 +12546,7 @@ body.hearth-dv-resizing {
   opacity: 1;
 }
 
-.hearth-view .hearth-card:has(.hearth-kanban) .hearth-card-body {
+.hearth-view .hearth-card:has(:is(.hearth-kanban,.chw-workspace)) .hearth-card-body {
   padding: 12px;
   overflow: hidden;
 }
@@ -13783,3 +13783,249 @@ body.hearth-dv-resizing {
 .hearth-view .chw-narrow .chw-filterbar .chw-searchbox { flex:0 1 160px;max-width:160px;margin-left:0; }
 .hearth-view .chw-narrow .chw-filterbar .chw-account-filter,
 .hearth-view .chw-narrow .chw-filterbar .chw-project-filter { flex:0 1 auto;max-width:calc(50% - 3px); }
+
+/* 2.0.2: a shared quiet surface for the header action and readable task agenda. */
+.hearth-view .hearth-newnote {
+  box-sizing:border-box;flex:0 0 auto;justify-content:center;gap:9px;
+  height:52px;min-height:52px;padding:0 17px;border-radius:14px;
+  border:1px solid var(--carrot-task-line);
+  background:color-mix(in srgb,var(--background-primary) 92%,var(--carrot-task-accent));
+  color:var(--text-normal);box-shadow:0 2px 10px rgb(0 0 0 / 5%);
+  font-size:13px;font-weight:600;line-height:1.2;
+}
+.hearth-view .hearth-newnote:hover {
+  background:var(--carrot-task-control-hover);border-color:var(--carrot-task-accent);
+}
+.hearth-view .hearth-newnote-icon { color:var(--carrot-task-accent); }
+.hearth-view .hearth-newnote-icon svg { width:18px;height:18px;stroke-width:1.8; }
+.hearth-view .hearth-newnote:focus-visible { outline:2px solid var(--carrot-task-accent);outline-offset:3px; }
+@container carrot-header (max-width:520px) {
+  .hearth-view .hearth-newnote { width:52px;padding-inline:0; }
+}
+.hearth-view .chw-agenda {
+  --hhk-lane:var(--carrot-task-accent);--hhk-radius-md:8px;--hhk-radius-lg:10px;
+  padding:0 3px 10px;
+}
+.hearth-view .chw-agenda-group { margin-bottom:16px; }
+.hearth-view .chw-agenda-heading {
+  min-height:34px;padding:6px 3px;gap:8px;color:var(--text-normal);
+  font-size:12px;font-weight:650;letter-spacing:.02em;
+}
+.hearth-view .chw-agenda-heading::after { content:'';flex:1;height:1px;background:var(--carrot-task-line);opacity:.55;margin-left:3px; }
+.hearth-view .chw-agenda-group[data-group="overdue"] .chw-agenda-heading { color:var(--text-error); }
+.hearth-view .chw-agenda-group[data-group="today"] .chw-agenda-heading { color:var(--text-normal); }
+.hearth-view .chw-agenda .hearth-kanban-card {
+  grid-template-columns:20px minmax(0,1fr) auto;
+  gap:4px 9px;padding:10px;margin:0 0 7px;border-radius:10px;
+  border:1px solid var(--carrot-task-line);
+  background:color-mix(in srgb,var(--background-primary) 96%,var(--carrot-task-accent));
+  color:var(--text-normal);box-shadow:0 2px 5px rgb(0 0 0 / 3%);opacity:1;
+}
+.hearth-view .chw-agenda .hearth-kanban-card:last-child { border-bottom:1px solid var(--carrot-task-line);margin-bottom:0; }
+.hearth-view .chw-agenda .hearth-kanban-card:hover {
+  background:var(--carrot-task-control-hover);border-color:var(--carrot-task-accent);box-shadow:none;
+}
+.hearth-view .chw-agenda .hearth-kanban-card-text { color:var(--text-normal);font-size:14px;font-weight:600;line-height:1.45; }
+.hearth-view .chw-agenda .hearth-kanban-card-meta { gap:4px 8px; }
+.hearth-view .chw-agenda .hearth-kanban-card-meta .hearth-task-meta { font-size:12px;line-height:21px;color:var(--text-muted); }
+.hearth-view .chw-agenda .chw-account-chip {
+  margin:0;padding:1px 6px;min-height:22px;border:1px solid var(--carrot-task-line);
+  background:var(--carrot-task-tint);color:var(--text-muted);font-size:11px;line-height:18px;
+}
+.hearth-view .chw-agenda-status {
+  padding:1px 6px;border:1px solid var(--background-modifier-border);border-radius:6px;
+  background:var(--background-secondary);color:var(--text-muted);font-size:11px;line-height:18px;
+}
+.hearth-view .chw-task-actions { display:flex;align-items:center;justify-content:flex-end;gap:5px;align-self:flex-end; }
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro) {
+  position:static;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;
+  width:28px;height:28px;min-height:28px;margin:0;padding:0;border-radius:7px;
+  border:1px solid var(--carrot-task-line);background:var(--background-primary);
+  color:var(--text-muted);box-shadow:none;opacity:1;cursor:pointer;
+}
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro):hover { background:var(--carrot-task-control-hover);color:var(--text-normal); }
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro):focus-visible { outline:2px solid var(--carrot-task-accent);outline-offset:2px; }
+.hearth-view .chw-pomodoro svg { width:17px;height:17px; }
+.hearth-view .chw-pomodoro { color:var(--text-error); }
+.hearth-view .chw-pomodoro.is-active { background:var(--carrot-task-control-hover);color:var(--text-normal);border-color:var(--carrot-task-accent); }
+.hearth-view .chw-pomodoro.is-paused { border-style:dashed; }
+.hearth-view .chw-pomodoro:disabled { opacity:.45;cursor:default; }
+.hearth-view .chw-pomodoro.is-busy { cursor:progress; }
+.hearth-view .chw-agenda .chw-task-actions { grid-column:3;grid-row:1 / span 2;align-self:center; }
+
+/* 2.0.3: keyboard focus remains visible without changing pointer hover states. */
+.hearth-view .chw-workspace .hearth-kanban-card:focus-visible {
+  outline:2px solid var(--carrot-task-accent);outline-offset:-2px;
+}
+.hearth-view .chw-workspace .hearth-kanban-card:focus-within {
+  border-color:var(--carrot-task-accent);
+}
+
+/* 2.0.4: compact card footers, bounded labels and touch-sized actions. */
+.hearth-view .hearth-card:has(.chw-workspace) { border-radius:18px; }
+/* 2.0.5: content-sized account tag, aligned metadata and no phantom detail row. */
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-kanban-card {
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;
+  grid-template-areas:"title title" "meta meta" "account actions";
+  gap:7px 8px;
+}
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-kanban-card:has(.hearth-kanban-card-block:not(:empty)) {
+  grid-template-areas:"title title" "meta meta" "details details" "account actions";
+}
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-kanban-card-row { grid-area:title; }
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-kanban-card-row > :is(.hearth-task-check,.hearth-task-check-recurring) {
+  flex:0 0 18px;width:18px;margin:2px 0 0;
+}
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-kanban-card-meta {
+  grid-area:meta;grid-template-columns:18px minmax(0,1fr);column-gap:7px;
+}
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-kanban-card-meta > .hearth-task-priority.is-dot-only {
+  width:18px;height:20px;
+}
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-kanban-card-meta .hearth-kanban-meta-content { grid-column:2;gap:4px; }
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-kanban-meta-dates { gap:4px 10px; }
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-task-chip.hearth-task-project {
+  box-sizing:border-box;flex:0 1 auto;max-width:100%;gap:4px;
+}
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-task-project .hearth-task-chip-label { flex:0 0 auto;margin-right:0; }
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-task-project .hearth-task-chip-value { min-width:0; }
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-kanban-card-block {
+  grid-area:details;display:flex;flex-direction:column;gap:4px;min-width:0;
+}
+.hearth-view .chw-workspace[data-presentation="board"] .hearth-kanban-card-block:empty { display:none; }
+.hearth-view .chw-workspace[data-presentation="board"] .chw-task-actions { grid-area:actions;align-self:center; }
+.hearth-view .chw-workspace[data-presentation="board"] .chw-account-chip {
+  grid-area:account;justify-self:start;align-self:center;width:fit-content;max-width:100%;min-width:0;
+  margin:0;padding:2px 6px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;
+}
+.hearth-view .chw-agenda .hearth-kanban-card-meta :is(.chw-account-chip,.chw-agenda-status) {
+  min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;word-break:normal;
+}
+.hearth-view .chw-task-actions .chw-pomodoro:not(:disabled) { color:color-mix(in srgb,var(--text-error) 76%,var(--text-normal)); }
+.hearth-view .chw-task-actions .chw-pomodoro.is-active { color:var(--text-normal); }
+.hearth-view .chw-task-actions .chw-pomodoro.is-active::after {
+  content:'';position:absolute;right:3px;top:3px;width:4px;height:4px;border-radius:50%;background:var(--carrot-task-accent);
+}
+.hearth-view .chw-task-actions .chw-pomodoro { position:relative; }
+.hearth-view .chw-narrow .chw-agenda .chw-task-actions { grid-row:1;align-self:start; }
+.hearth-view .chw-narrow .chw-agenda .hearth-kanban-card-meta { grid-column:2 / -1; }
+@media (pointer:coarse) {
+  .hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro) {
+    flex-basis:36px;width:36px!important;height:36px!important;min-width:36px;min-height:36px!important;
+  }
+  .hearth-view .chw-task-actions { gap:6px; }
+}
+.is-mobile .hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro) {
+  flex-basis:36px;width:36px!important;height:36px!important;min-width:36px;min-height:36px!important;
+}
+@media (prefers-reduced-motion:reduce) {
+  .hearth-view :is(.hearth-newnote,.chw-workspace .hearth-kanban-card,.chw-pomodoro) { transition:none; }
+}
+
+/* 2.0.4: plugin-owned dialogs share Home's surfaces and control language. */
+.modal.carrot-home-modal {
+  --carrot-task-accent:var(--interactive-accent);
+  --carrot-task-line:var(--chm-line);--carrot-task-control:var(--chm-tint);
+  --carrot-task-control-hover:var(--chm-hover);
+  --chm-accent:var(--interactive-accent);
+  --chm-line:color-mix(in srgb,var(--chm-accent) 24%,var(--background-modifier-border));
+  --chm-tint:color-mix(in srgb,var(--chm-accent) 7%,var(--background-primary));
+  --chm-hover:color-mix(in srgb,var(--chm-accent) 12%,var(--background-primary));
+  max-width:calc(100vw - 32px);max-height:calc(100dvh - 40px);
+  border:1px solid var(--chm-line);border-radius:16px;
+  background:var(--background-primary);color:var(--text-normal);
+  box-shadow:0 18px 64px rgb(0 0 0 / 22%);padding:24px;
+}
+.modal.carrot-home-modal:not(.hearth-sched-modal):not(.hearth-setup-modal):not(.hearth-card-picker-modal):not(.hearth-taskfields-modal):not(.hearth-whatsnew-modal):not(:has(.hearth-tabbed-modal)):not(.prompt) {
+  width:560px;
+}
+.modal.carrot-home-modal .modal-title {
+  display:flex;align-items:center;gap:10px;margin:0 32px 20px 0;
+  color:var(--text-normal);font-size:19px;font-weight:650;line-height:1.4;overflow-wrap:anywhere;
+}
+.modal.carrot-home-modal .modal-title:empty { display:none; }
+.modal.carrot-home-modal .modal-title:not(:empty)::before {
+  content:'';display:block;flex:0 0 3px;width:3px;height:20px;
+  border-radius:3px;background:var(--chm-accent);box-shadow:none;
+}
+.modal.carrot-home-modal .modal-content { min-width:0;margin:0;line-height:1.55; }
+.modal.carrot-home-modal .modal-close-button { top:16px;right:16px;border-radius:7px;color:var(--text-muted); }
+.modal.carrot-home-modal .modal-close-button:hover { background:var(--chm-hover);color:var(--text-normal); }
+.modal.carrot-home-modal .modal-content > p { color:var(--text-muted);font-size:13px;margin:0 0 16px; }
+.modal.carrot-home-modal .setting-item { gap:12px;border-color:var(--background-modifier-border); }
+.modal.carrot-home-modal .setting-item-name { font-size:13px;font-weight:500; }
+.modal.carrot-home-modal .setting-item-description { font-size:12px;line-height:1.5;color:var(--text-muted); }
+.modal.carrot-home-modal :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),select,textarea) {
+  box-sizing:border-box;max-width:100%;min-height:34px;border:1px solid var(--chm-line);
+  border-radius:8px;background:var(--background-primary);color:var(--text-normal);
+  box-shadow:none;font-size:13px;padding:6px 9px;
+}
+.modal.carrot-home-modal textarea { min-height:90px;resize:vertical; }
+.modal.carrot-home-modal :is(input,select,textarea):focus-visible {
+  outline:2px solid var(--chm-accent);outline-offset:2px;box-shadow:none;
+}
+.modal.carrot-home-modal:not(.hearth-sched-modal) button:not(.clickable-icon) {
+  box-sizing:border-box;min-height:34px;border:1px solid var(--chm-line);border-radius:8px;
+  background:var(--chm-tint);color:var(--text-normal);box-shadow:none;
+  font-size:13px;font-weight:500;line-height:1.35;
+}
+.modal.carrot-home-modal:not(.hearth-sched-modal) button:not(.clickable-icon):hover { background:var(--chm-hover); }
+.modal.carrot-home-modal:not(.hearth-sched-modal) button.mod-cta {
+  background:var(--interactive-accent);border-color:var(--interactive-accent);color:var(--text-on-accent);font-weight:600;
+}
+.modal.carrot-home-modal:not(.hearth-sched-modal) button.mod-cta:hover { background:var(--interactive-accent-hover); }
+.modal.carrot-home-modal:not(.hearth-sched-modal) :is(button.mod-warning,button.hearth-danger-btn) {
+  background:color-mix(in srgb,var(--text-error) 8%,var(--background-primary));border-color:color-mix(in srgb,var(--text-error) 40%,var(--background-modifier-border));color:var(--text-error);
+}
+.modal.carrot-home-modal button:focus-visible { outline:2px solid var(--chm-accent);outline-offset:2px; }
+.modal.carrot-home-modal button:disabled { opacity:.5;cursor:default; }
+.modal.carrot-home-modal .chw-options { margin:14px 0;padding:10px 12px;border:1px solid var(--chm-line);border-radius:10px;background:var(--chm-tint); }
+.modal.carrot-home-modal .chw-options legend { padding:0 5px;color:var(--text-normal);font-size:12px;font-weight:600; }
+.modal.carrot-home-modal .chw-options-list { margin-top:5px;max-height:152px;overscroll-behavior:contain; }
+.modal.carrot-home-modal .chw-option { min-height:30px;padding:4px 2px;gap:8px; }
+.modal.carrot-home-modal .chw-option input { accent-color:var(--chm-accent); }
+.modal.carrot-home-modal .chw-field { gap:14px;margin:14px 0;font-size:13px; }
+.modal.carrot-home-modal .chw-field > :is(select,input) { flex:1;min-width:0;max-width:65%; }
+.modal.carrot-home-modal .chw-manager-row { margin:0;padding:12px 0;border-bottom:1px solid var(--background-modifier-border); }
+.modal.carrot-home-modal .chw-manager-row > span { min-width:0;overflow-wrap:anywhere; }
+.modal.carrot-home-modal .carrot-home-modal-actions,
+.modal.carrot-home-modal .chw-modal-actions,
+.modal.carrot-home-modal .modal-content > .setting-item:last-child:has(button):not(:has(input,select,textarea)),
+.modal.carrot-home-modal .hearth-modal-footer {
+  display:flex;justify-content:flex-end;gap:8px;padding-top:16px;margin-top:18px;border-top:1px solid var(--chm-line);
+}
+.modal.carrot-home-modal .chw-modal-actions button { min-width:66px; }
+.modal.carrot-home-modal .hearth-tasknotes-timing-help { margin:0 0 18px;font-size:13px;line-height:1.6;color:var(--text-muted); }
+.modal.carrot-home-modal .hearth-taskdetail-row { gap:12px;margin-bottom:14px; }
+.modal.carrot-home-modal .hearth-taskdetail-label { flex-basis:100px;font-size:13px;color:var(--text-normal); }
+.modal.carrot-home-modal .hearth-tasknotes-date-pair { min-width:0;gap:8px; }
+.modal.carrot-home-modal .hearth-tasknotes-date-pair input { min-width:0;width:100%; }
+.modal.carrot-home-modal .hearth-tasknotes-end-preview { padding:10px 12px;border:1px solid var(--chm-line);border-radius:8px;background:var(--chm-tint);color:var(--text-normal);font-size:13px; }
+.modal.carrot-home-modal .hearth-tasknotes-due-help { font-size:12px;color:var(--text-muted); }
+@media(max-width:600px) {
+  .modal.carrot-home-modal { max-width:calc(100vw - 20px);max-height:calc(100dvh - 24px);padding:18px;border-radius:13px; }
+  .modal.carrot-home-modal .modal-title { font-size:17px;margin-bottom:16px; }
+  .modal.carrot-home-modal .hearth-tasknotes-date-row { align-items:stretch;flex-direction:column;gap:6px; }
+  .modal.carrot-home-modal .hearth-tasknotes-date-row > .hearth-taskdetail-label { flex-basis:auto; }
+  .modal.carrot-home-modal .hearth-tasknotes-date-pair { width:100%; }
+}
+
+/* Obsidian 1.14 uses a header icon button for close. */
+.modal.carrot-home-modal .modal-header-button.clickable-icon {
+  width:30px;height:30px;min-height:30px;padding:5px;border-radius:7px;
+  border:1px solid var(--chm-line);background:var(--chm-tint);color:var(--text-muted);box-shadow:none;
+}
+.modal.carrot-home-modal .modal-header-button.clickable-icon:hover { background:var(--chm-hover);color:var(--text-normal); }
+.modal.carrot-home-modal .carrot-home-modal-actions button { min-width:66px; }
+.modal.carrot-home-modal .hearth-tasknotes-end-preview,
+.modal.carrot-home-modal .hearth-tasknotes-due-help { margin-left:112px; }
+@media(max-width:600px) {
+  .modal.carrot-home-modal .hearth-tasknotes-date-pair { flex:0 0 auto; }
+  .modal.carrot-home-modal .hearth-tasknotes-end-preview,
+  .modal.carrot-home-modal .hearth-tasknotes-due-help { margin-left:0; }
+}
+.modal.carrot-home-modal .chw-field > span:first-child { flex:0 0 80px; }
+.modal.carrot-home-modal .chw-field > :is(select,input) { max-width:none; }
+.modal.carrot-home-modal :is(.chw-modal-actions,.carrot-home-modal-actions) {
+  position:sticky;bottom:0;z-index:2;background:var(--background-primary);padding-bottom:8px;
+}

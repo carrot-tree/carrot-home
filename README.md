@@ -15,6 +15,7 @@ Carrot Home 基于 [ondreu/Hearth](https://github.com/ondreu/Hearth) 定制，�
 - **把常用内容放在首页**：搜索笔记、快速新建，查看时钟、日历、书签与最近笔记；背景和卡片布局可按自己的习惯调整。
 - **按工作范围看任务**：按内容账号、项目、关键词、计划／截止日期、状态和优先级筛选，并保存常用视图。
 - **看板与清单随时切换**：看板按状态组织任务，日期清单集中显示今天、逾期与接下来的安排。
+- **从任务直接开始专注**：点击小番茄启动或继续 TaskNotes 番茄钟，保留当前任务关联与已有计时。
 - **一起查看任务和项目进度**：通过独立的 Carrot Gantt 插件，在首页中查看项目时间轴和关联任务。
 
 ## 效果展示
@@ -49,7 +50,7 @@ Carrot Home 基于 [ondreu/Hearth](https://github.com/ondreu/Hearth) 定制，�
 3. 选择跟踪最新版本，添加后在社区插件列表启用 **Carrot Home**。
 4. 从左侧功能区或命令面板打开 **Carrot Home**。
 
-当前发布版本为 [2.0.1](https://github.com/carrot-tree/carrot-home/releases/tag/2.0.1)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
+当前发布版本为 [2.0.5](https://github.com/carrot-tree/carrot-home/releases/tag/2.0.5)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
 
 ### 按需安装配套插件
 
@@ -90,14 +91,14 @@ Carrot Home 是 [Hearth](https://github.com/ondreu/Hearth) 的定制发行版，
 
 本仓库由已 Fork 的 `carrot-tree/carrothome` 改名而来。旧独立仓库保留在 [carrot-home-legacy](https://github.com/carrot-tree/carrot-home-legacy)，旧 Release 与 Issue 等记录仍属于旧仓库；[1.1.3 附件](https://github.com/carrot-tree/carrot-home-legacy/releases/tag/1.1.3)也保留在那里。
 
-已有 BRAT 条目若跟踪 `carrot-tree/carrot-home`，现在会指向这个 Fork。固定旧版本的条目无法在这里找到旧 Release，请根据需要切换到最新版本或明确选择 2.0.1；已有库的配置不会因此被自动修改。
+已有 BRAT 条目若跟踪 `carrot-tree/carrot-home`，现在会指向这个 Fork。固定旧版本的条目无法在这里找到旧 Release，请根据需要切换到最新版本或明确选择 2.0.5；已有库的配置不会因此被自动修改。
 
 </details>
 
 <details>
 <summary>开发与发布</summary>
 
-`src/home-base.js` 保留原有 Home 运行代码；`src/tasks-workspace.js` 提供 Tasks 工作区；`src/brat-bootstrap.js` 提供分享版初始化逻辑。`resources/` 只包含经过整理的默认布局和虚构示例。
+`src/home-base.js` 保留原有 Home 运行代码；`src/tasks-workspace.js` 提供 Tasks 工作区与番茄钟入口；`src/modal-style.js` 统一 Home 自有弹框；`src/brat-bootstrap.js` 提供分享版初始化逻辑。`resources/` 只包含经过整理的默认布局和虚构示例。
 
 使用 Node.js 22 或以上：
 
@@ -110,7 +111,7 @@ node --test tests/*.test.cjs
 
 构建将默认资源嵌入 `main.js`。测试在内存中覆盖新安装、升级、重载、文件保留和初始化失败重试，不访问真实笔记库。
 
-发布新版需同步 `manifest.json`、`versions.json`、`resources/defaults.json` 的 `lastSeenVersion`、`CHANGELOG.md` 和 `RELEASE_NOTES.md`，重新构建并提交，再运行 **Actions → Release plugin** 或推送对应版本标签。标签与 manifest 版本一致，例如 `2.0.1`，不加 `v` 前缀；工作流验证后上传三个 BRAT 附件。参见 [BRAT 官方发布规范](https://github.com/TfTHacker/obsidian42-brat/blob/main/BRAT-DEVELOPER-GUIDE.md)。
+发布新版需同步 `manifest.json`、`versions.json`、`resources/defaults.json` 的 `lastSeenVersion`、`CHANGELOG.md` 和 `RELEASE_NOTES.md`，重新构建并提交，再运行 **Actions → Release plugin** 或推送对应版本标签。标签与 manifest 版本一致，例如 `2.0.5`，不加 `v` 前缀；工作流验证后上传三个 BRAT 附件。参见 [BRAT 官方发布规范](https://github.com/TfTHacker/obsidian42-brat/blob/main/BRAT-DEVELOPER-GUIDE.md)。
 
 </details>
 
