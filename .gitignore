@@ -6,3 +6,7 @@ share-install.json
 *.log
 .env
 .env.*
+
+# Local design evidence, previews and isolated Obsidian test vaults
+/output/
+/design-proposals/

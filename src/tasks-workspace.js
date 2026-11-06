@@ -92,7 +92,8 @@ function carrotTaskPomodoroBridge() {
     const file = typeof path === 'string' && path ? vault.getAbstractFileByPath(path) : null;
     if (!file || file.path !== path || typeof file.extension !== 'string' || 'children' in file) throw new Error('任务已移动或不存在，请刷新任务列表');
   }
-  async function run(plugin, path) {
+  async function run(plugin, path, duration) {
+    if(duration!==undefined&&(!Number.isFinite(duration)||duration<1||duration>120))throw new Error('单次时长应为 1 到 120 分钟');
     if (!available(plugin)) throw new Error('TaskNotes 番茄钟服务不可用，请启用或更新 TaskNotes');
     const service = plugin.pomodoroService;
     if (pending.has(service)) return 'busy';
@@ -104,6 +105,7 @@ function carrotTaskPomodoroBridge() {
         if (typeof plugin.cacheManager?.getTaskInfo !== 'function') throw new Error('无法读取 TaskNotes 任务');
         task = await plugin.cacheManager.getTaskInfo(path);
         if (!task || task.path !== path) throw new Error('任务已移动或不存在，请刷新任务列表');
+        if(task.archived||(plugin.settings?.customStatuses||[]).some(s=>s.value===task.status&&s.isCompleted))throw new Error('任务已完成或归档，请选择其它任务');
         // Reading the task yields; another TaskNotes entry point may have started
         // a session meanwhile. Recheck before any timer mutation.
         action = currentAction(service.getState(), path);
@@ -111,7 +113,7 @@ function carrotTaskPomodoroBridge() {
       if (action === 'start') {
         // A cached TaskInfo can outlive deletion/rename while the lookup awaits.
         requireTaskFile(plugin, path);
-        await service.startPomodoro(task);
+        if(duration===undefined)await service.startPomodoro(task);else await service.startPomodoro(task, duration);
       }
       else if (action === 'resume') {
         requireTaskFile(plugin, path);
@@ -125,7 +127,12 @@ function carrotTaskPomodoroBridge() {
       return {start:'started',resume:'resumed'}[action] || action;
     } finally { pending.delete(service); }
   }
-  return {available, currentAction, run, isPending: plugin => !!plugin?.pomodoroService && pending.has(plugin.pomodoroService)};
+  async function operate(plugin, action) {
+    if(!available(plugin))throw new Error('TaskNotes 番茄钟服务不可用');
+    const service=plugin.pomodoroService;if(pending.has(service))throw new Error('计时正在处理，请稍后再试');
+    pending.add(service);try{return await action();}finally{pending.delete(service);}
+  }
+  return {available, currentAction, run, operate, isPending: plugin => !!plugin?.pomodoroService && pending.has(plugin.pomodoroService)};
 }
 
 // A task's path and control identity survive title/account/timer-label changes.
@@ -626,5 +633,5 @@ function carrotTaskFocus() {
   Ch.cloneConfig=function(source,target){previousClone(source,target);if(source.tasks?.workspace)target.tasks.workspace=clone(source.tasks.workspace);};
   // Exposed on the plugin for diagnostic readback and isolated native checks.
   const previousLoad=bs.prototype.onload;
-  bs.prototype.onload=async function(){await previousLoad.call(this);this.taskWorkspace={core,Menu:x.Menu,enrich:(tasks)=>enrich({app:this.app,plugin:this},tasks),read:cfg=>state(cfg),render:draw,createTask,accountEditor};};
+  bs.prototype.onload=async function(){await previousLoad.call(this);this.taskWorkspace={core,pomodoro,Menu:x.Menu,enrich:(tasks)=>enrich({app:this.app,plugin:this},tasks),read:cfg=>state(cfg),render:draw,createTask,accountEditor};};
 })();

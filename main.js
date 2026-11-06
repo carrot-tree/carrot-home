@@ -2264,7 +2264,8 @@ function carrotTaskPomodoroBridge() {
     const file = typeof path === 'string' && path ? vault.getAbstractFileByPath(path) : null;
     if (!file || file.path !== path || typeof file.extension !== 'string' || 'children' in file) throw new Error('任务已移动或不存在，请刷新任务列表');
   }
-  async function run(plugin, path) {
+  async function run(plugin, path, duration) {
+    if(duration!==undefined&&(!Number.isFinite(duration)||duration<1||duration>120))throw new Error('单次时长应为 1 到 120 分钟');
     if (!available(plugin)) throw new Error('TaskNotes 番茄钟服务不可用，请启用或更新 TaskNotes');
     const service = plugin.pomodoroService;
     if (pending.has(service)) return 'busy';
@@ -2276,6 +2277,7 @@ function carrotTaskPomodoroBridge() {
         if (typeof plugin.cacheManager?.getTaskInfo !== 'function') throw new Error('无法读取 TaskNotes 任务');
         task = await plugin.cacheManager.getTaskInfo(path);
         if (!task || task.path !== path) throw new Error('任务已移动或不存在，请刷新任务列表');
+        if(task.archived||(plugin.settings?.customStatuses||[]).some(s=>s.value===task.status&&s.isCompleted))throw new Error('任务已完成或归档，请选择其它任务');
         // Reading the task yields; another TaskNotes entry point may have started
         // a session meanwhile. Recheck before any timer mutation.
         action = currentAction(service.getState(), path);
@@ -2283,7 +2285,7 @@ function carrotTaskPomodoroBridge() {
       if (action === 'start') {
         // A cached TaskInfo can outlive deletion/rename while the lookup awaits.
         requireTaskFile(plugin, path);
-        await service.startPomodoro(task);
+        if(duration===undefined)await service.startPomodoro(task);else await service.startPomodoro(task, duration);
       }
       else if (action === 'resume') {
         requireTaskFile(plugin, path);
@@ -2297,7 +2299,12 @@ function carrotTaskPomodoroBridge() {
       return {start:'started',resume:'resumed'}[action] || action;
     } finally { pending.delete(service); }
   }
-  return {available, currentAction, run, isPending: plugin => !!plugin?.pomodoroService && pending.has(plugin.pomodoroService)};
+  async function operate(plugin, action) {
+    if(!available(plugin))throw new Error('TaskNotes 番茄钟服务不可用');
+    const service=plugin.pomodoroService;if(pending.has(service))throw new Error('计时正在处理，请稍后再试');
+    pending.add(service);try{return await action();}finally{pending.delete(service);}
+  }
+  return {available, currentAction, run, operate, isPending: plugin => !!plugin?.pomodoroService && pending.has(plugin.pomodoroService)};
 }
 
 // A task's path and control identity survive title/account/timer-label changes.
@@ -2798,7 +2805,535 @@ function carrotTaskFocus() {
   Ch.cloneConfig=function(source,target){previousClone(source,target);if(source.tasks?.workspace)target.tasks.workspace=clone(source.tasks.workspace);};
   // Exposed on the plugin for diagnostic readback and isolated native checks.
   const previousLoad=bs.prototype.onload;
-  bs.prototype.onload=async function(){await previousLoad.call(this);this.taskWorkspace={core,Menu:x.Menu,enrich:(tasks)=>enrich({app:this.app,plugin:this},tasks),read:cfg=>state(cfg),render:draw,createTask,accountEditor};};
+  bs.prototype.onload=async function(){await previousLoad.call(this);this.taskWorkspace={core,pomodoro,Menu:x.Menu,enrich:(tasks)=>enrich({app:this.app,plugin:this},tasks),read:cfg=>state(cfg),render:draw,createTask,accountEditor};};
+})();
+
+/* Pure note semantics and a single-writer, compare-before-rename sidecar store. */
+function carrotStickyNotesCore() {
+  const safePath=p=>typeof p==='string'&&p.endsWith('.md')&&!p.startsWith('/')&&!p.startsWith('.')&&!p.includes('\\')&&!p.split('/').some(x=>!x||x==='..'||x==='.')&&!/[\u0000-\u001f]/.test(p);
+  const defaults=()=>({version:2,enabled:true,notes:[],archived:[],drafts:{},focusPath:''});
+  function normalize(input){
+    if(!input||![1,2].includes(input.version)||!Array.isArray(input.notes))throw new Error('便签存储版本或格式无法读取；原文件已保留');
+    const list=value=>{if(!Array.isArray(value)||value.some(p=>!safePath(p)))throw new Error('便签索引包含无效路径；原文件已保留');return [...new Set(value)];};
+    const notes=list(input.notes),archived=list(input.version===1?[]:(input.archived||[])).filter(p=>!notes.includes(p));
+    const drafts=input.drafts||{};
+    if(!drafts||typeof drafts!=='object'||Array.isArray(drafts)||Object.entries(drafts).some(([k,v])=>(k!=='new'&&!safePath(k))||!v||typeof v.title!=='string'||typeof v.body!=='string'||(v.baseText!=null&&typeof v.baseText!=='string')))throw new Error('便签草稿格式无法读取；原文件已保留');
+    if(input.focusPath&& !safePath(input.focusPath))throw new Error('专注任务路径格式无效；原文件已保留');
+    return {...input,version:2,enabled:input.enabled!==false,notes,archived,drafts,focusPath:input.focusPath||''};
+  }
+  function split(raw){
+    raw=String(raw);const start='<!-- carrot-sticky:start -->',end='<!-- carrot-sticky:end -->';
+    const a=raw.indexOf(start),b=a<0?-1:raw.indexOf(end,a+start.length);
+    let prefix='',suffix='',text=raw;
+    if(a>=0&&b>=0){prefix=raw.slice(0,a+start.length)+'\n';suffix='\n'+raw.slice(b);text=raw.slice(a+start.length,b).replace(/^\r?\n/,'').replace(/\r?\n$/,'');}
+    else {
+      const fm=raw.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);if(fm){prefix=fm[0];text=raw.slice(prefix.length);}
+      const leading=text.match(/^\s*\n/);if(leading){prefix+=leading[0];text=text.slice(leading[0].length);}
+      const first=text.match(/^#\s+[^\r\n]*(?:\r?\n|$)/);const from=first?first[0].length:0;
+      const tail=text.slice(from).match(/(?:^|\n)#{1,6}\s+/);if(tail){const index=from+tail.index+(tail[0].startsWith('\n')?1:0);suffix=text.slice(index);text=text.slice(0,index);}
+    }
+    const heading=text.match(/^#\s+([^\r\n]*)(?:\r?\n|$)/);
+    return {prefix,suffix,title:heading?heading[1].trim():'',body:(heading?text.slice(heading[0].length):text).trim()};
+  }
+  const display=(value,fallback='空白便签')=>value.title.trim()||value.body.trim().split(/\r?\n/)[0].replace(/^\s*[-*#>]\s*/,'').slice(0,60)||fallback;
+  function rewrite(raw,title,body){const p=split(raw),middle=(title.trim()?`# ${title.trim().replace(/\r?\n/g,' ')}\n\n`:'')+body.trim();if(!middle)throw new Error('标题和正文至少写一项');return p.prefix+middle+'\n'+(p.suffix?'\n'+p.suffix:'');}
+  function createText(title,body){if(!title.trim()&&!body.trim())throw new Error('标题和正文至少写一项');return '<!-- carrot-sticky:start -->\n'+(title.trim()?`# ${title.trim().replace(/\r?\n/g,' ')}\n\n`:'')+body.trim()+'\n<!-- carrot-sticky:end -->\n';}
+  function move(list,path,target,after=false){if(path===target||!list.includes(path)||!list.includes(target))return [...list];const next=list.filter(p=>p!==path),i=next.indexOf(target);next.splice(i+(after?1:0),0,path);return next;}
+  function shift(list,path,delta){const i=list.indexOf(path),n=i+delta;if(i<0||n<0||n>=list.length)return [...list];return move(list,path,list[n],delta>0);}
+  function rename(state,oldPath,newPath){const replace=p=>p===oldPath?newPath:p.startsWith(oldPath+'/')?newPath+p.slice(oldPath.length):p;return {...state,notes:state.notes.map(replace),archived:state.archived.map(replace),focusPath:replace(state.focusPath),drafts:Object.fromEntries(Object.entries(state.drafts).map(([p,d])=>[p==='new'?p:replace(p),d]))};}
+  class Store {
+    constructor(adapter,path){this.adapter=adapter;this.path=path;this.state=defaults();this.disk=null;this.error=null;this.queue=Promise.resolve();}
+    async load(){
+      try{if(!await this.adapter.exists(this.path))return this.state;
+        const raw=await this.adapter.read(this.path),input=JSON.parse(raw),next=normalize(input);this.disk=raw;
+        if(input.version===1){const backup=this.path+'.v1-backup-'+Date.now()+'.json';await this.adapter.write(backup,raw);if(await this.adapter.read(backup)!==raw)throw new Error('旧便签备份验证失败；没有执行迁移');await this.commit(next);this.migrationBackup=backup;}else this.state=next;
+      }catch(error){this.error=error;}
+      return this.state;
+    }
+    async commit(next){
+      const current=await this.adapter.exists(this.path)?await this.adapter.read(this.path):null;
+      if(current!==this.disk)throw new Error('便签索引已在其它窗口变更，请重载后重试；没有覆盖新数据');
+      const text=JSON.stringify(normalize(next),null,2),temp=this.path+'.tmp-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+      try{await this.adapter.write(temp,text);if(await this.adapter.read(temp)!==text)throw new Error('便签写入校验失败');if(this.adapter.atomicReplace)await this.adapter.atomicReplace(temp,this.path,this.disk);else await this.adapter.rename(temp,this.path);}
+      catch(error){try{if(await this.adapter.exists(temp))await this.adapter.remove(temp);}catch{}throw error;}
+      this.disk=text;this.state=normalize(next);return this.state;
+    }
+    update(change){const work=this.queue.catch(()=>{}).then(()=>{if(this.error)throw new Error('随手晾晾的数据未能读取，请检查 top-area.json；没有清空或覆盖原文件');return this.commit(typeof change==='function'?change(this.state):change);});this.queue=work;return work;}
+  }
+  function adapterIO(adapter){
+    const io=Object.fromEntries(['exists','read','write','remove','rename'].map(k=>[k,adapter[k].bind(adapter)]));
+    if(typeof adapter.getFullPath==='function')io.atomicReplace=async(from,to,expected)=>{
+      const fs=require('fs').promises,lockPath=adapter.getFullPath(to+'.lock');let lock;
+      try{lock=await fs.open(lockPath,'wx');}catch{throw new Error('便签正由其它窗口保存，请稍后重试；原文件未覆盖');}
+      try{
+        let disk=null;try{disk=await fs.readFile(adapter.getFullPath(to),'utf8');}catch(e){if(e.code!=='ENOENT')throw e;}
+        if(disk!==expected)throw new Error('便签索引已在其它窗口变更，请重载后重试；没有覆盖新数据');
+        await fs.rename(adapter.getFullPath(from),adapter.getFullPath(to));
+      }finally{await lock.close();await fs.unlink(lockPath);}
+    };
+    return io;
+  }
+  return {safePath,defaults,normalize,split,display,rewrite,createText,move,shift,rename,Store,adapterIO};
+}
+
+/* UI for real Markdown sticky notes; all mutations flow through the controller. */
+var CarrotStickyUI=(()=>{
+  const O=require('obsidian'),C=carrotStickyNotesCore();
+  const icon=(el,name)=>{const span=el.createSpan({cls:'cta-icon'});O.setIcon(span,name);return span;};
+  const btn=(el,label,run,cls='')=>{const b=el.createEl('button',{cls:'cta-button '+cls,text:label,attr:{type:'button','aria-label':label,title:label}});b.addEventListener('click',e=>{e.stopPropagation();Promise.resolve().then(run).catch(error=>new O.Notice(error.message));});return b;};
+  class Editor extends CarrotHomeModal {
+    constructor(owner,path=null){super(owner.plugin.app);this.owner=owner;this.path=path;this.key=path||'new';this.saved=false;this.discarded=false;this.loading=true;this.saving=false;this.dirty=false;}
+    async onOpen(){
+      this.modalEl.addClass('csn-editor');this.titleEl.setText(this.path?'改一改':'贴一张');
+      const hint=this.contentEl.createEl('p',{cls:'cta-capture-hint',text:'标题可以留空。关闭或取消会保留草稿；Cmd/Ctrl+Enter 保存。'});
+      const title=this.contentEl.createEl('input',{cls:'csn-title-input',attr:{placeholder:'标题（可选）','aria-label':'便签标题（可选）',type:'text'}});
+      const body=this.contentEl.createEl('textarea',{cls:'csn-body-input',attr:{placeholder:'写点要记住的事…','aria-label':'便签正文',rows:'8'}});
+      this.titleInput=title;this.bodyInput=body;
+      const error=this.contentEl.createDiv({cls:'csn-editor-error',attr:{role:'status'}});this.errorEl=error;
+      const row=this.contentEl.createDiv({cls:'carrot-home-modal-actions'});
+      const save=btn(row,'保存便签',()=>this.save(),'mod-cta');save.textContent='保存';this.saveButton=save;save.disabled=true;
+      btn(row,'取消',()=>this.close());btn(row,'丢弃草稿',async()=>{await this.owner.clearDraft(this.key);this.discarded=true;this.close();},'csn-quiet');
+      if(this.path)btn(row,'打开原笔记',()=>this.owner.openFile(this.path));
+      const change=()=>{if(this.loading)return;this.dirty=true;clearTimeout(this.draftTimer);this.draftTimer=setTimeout(()=>this.keepDraft().catch(e=>{error.textContent='草稿暂未保存：'+e.message;}),300);};
+      title.addEventListener('input',change);body.addEventListener('input',change);
+      this.contentEl.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();this.save();}});
+      try{
+        let value={title:'',body:''};this.baseText=null;
+        if(this.path){const data=await this.owner.readNote(this.path);if(data.missing)throw new Error('原文件已移除，请在全部便签中处理失效引用');value=data;this.baseText=data.raw;}
+        const draft=this.owner.state.drafts[this.key];if(draft){value=draft;this.baseText=draft.baseText??this.baseText;this.dirty=true;hint.textContent='已恢复上次草稿。取消或关闭仍会保留；点击保存才会更新原笔记。';}
+        title.value=value.title;body.value=value.body;this.initial={title:title.value,body:body.value};this.loading=false;save.disabled=false;body.focus();
+      }catch(e){error.textContent=e.message;this.loading=false;title.disabled=true;body.disabled=true;}
+    }
+    async keepDraft(){if(this.loading||this.saved||this.discarded||!this.dirty)return;return this.owner.setDraft(this.key,{title:this.titleInput.value,body:this.bodyInput.value,baseText:this.baseText,updatedAt:Date.now()});}
+    async save(){
+      if(this.loading||this.saving||this.saveButton.disabled)return;
+      const title=this.titleInput.value.trim(),body=this.bodyInput.value.trim();if(!title&&!body){this.errorEl.textContent='标题和正文至少写一项';this.bodyInput.focus();return;}
+      this.saving=true;this.saveButton.disabled=true;clearTimeout(this.draftTimer);this.errorEl.textContent='保存中…';
+      try{if(this.path)await this.owner.editNote(this.path,title,body,this.baseText);else await this.owner.capture(title,body);this.saved=true;await this.owner.clearDraft(this.key);this.close();}
+      catch(e){this.errorEl.textContent=e.message;try{await this.keepDraft();}catch{}this.saving=false;this.saveButton.disabled=false;}
+    }
+    close(){if(this.saving&&!this.saved)return;super.close();}
+    onClose(){clearTimeout(this.draftTimer);this.keepDraft().catch(e=>new O.Notice('草稿暂未保存：'+e.message));}
+  }
+  /* Pointer drag works in Electron without native HTML5 drag ghosts. */
+  function bindDrag(owner,handle,source,container,kind,cleanupRegister){
+    handle.setAttribute('aria-label','拖动便签调整顺序；Alt 加方向键也可移动');handle.title='拖动纸夹调顺序 · Alt+方向键移动';
+    let session=null;
+    const clearMarks=()=>container.querySelectorAll('.csn-drop-before,.csn-drop-after,.csn-lifted').forEach(el=>el.classList.remove('csn-drop-before','csn-drop-after','csn-lifted'));
+    const finish=(commit=false)=>{
+      if(!session)return;const current=session;session=null;clearMarks();current.ghost?.remove();
+      try{handle.releasePointerCapture(current.pointer);}catch{}
+      document.removeEventListener('keydown',escape,true);handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);handle.removeEventListener('pointercancel',cancel);
+      owner.dragging=false;owner.dragAbort=null;
+      const task=commit&&current.active&&current.target?owner.reorder(source,current.target,current.after):Promise.resolve();
+      task.catch(e=>new O.Notice('顺序未保存：'+e.message)).finally(()=>{owner.refresh();if(owner.pendingRefresh)owner.pendingRefresh=false;});
+    };
+    const cancel=()=>finish(false),escape=e=>{if(e.key==='Escape'&&session){e.preventDefault();e.stopImmediatePropagation();finish(false);}},up=()=>finish(true);
+    const move=e=>{
+      if(!session)return;
+      if(!session.active&&Math.hypot(e.clientX-session.x,e.clientY-session.y)<5)return;
+      if(!session.active){session.active=true;owner.dragging=true;owner.dragAbort=cancel;session.ghost=document.createElement('div');session.ghost.className='csn-drag-ghost';session.ghost.textContent='移动便签 · Esc 取消';document.body.appendChild(session.ghost);}
+      e.preventDefault();session.ghost.style.left=(e.clientX+12)+'px';session.ghost.style.top=(e.clientY+12)+'px';clearMarks();handle.closest('[data-note-path]')?.classList.add('csn-lifted');
+      const box=container.getBoundingClientRect();session.target=null;
+      if(e.clientX<box.left||e.clientX>box.right||e.clientY<box.top||e.clientY>box.bottom)return;
+      if(kind==='vertical'){if(e.clientY>box.bottom-30)container.scrollTop+=14;else if(e.clientY<box.top+30)container.scrollTop-=14;}
+      const candidates=[...container.querySelectorAll('[data-note-path]')].filter(el=>el.dataset.notePath!==source);
+      let target=candidates.find(el=>{const r=el.getBoundingClientRect();return e.clientX>=r.left-8&&e.clientX<=r.right+8&&e.clientY>=r.top-6&&e.clientY<=r.bottom+6;});
+      if(!target)return;const r=target.getBoundingClientRect();session.after=kind==='vertical'?e.clientY>r.top+r.height/2:e.clientX>r.left+r.width/2;session.target=target.dataset.notePath;target.classList.add(session.after?'csn-drop-after':'csn-drop-before');
+    };
+    handle.addEventListener('pointerdown',e=>{if(e.button!==0||owner.dragging)return;handle.focus({preventScroll:true});e.preventDefault();e.stopPropagation();session={pointer:e.pointerId,x:e.clientX,y:e.clientY,active:false,target:null};handle.setPointerCapture(e.pointerId);document.addEventListener('keydown',escape,true);handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',up);handle.addEventListener('pointercancel',cancel);});
+    handle.addEventListener('lostpointercapture',cancel);
+    handle.addEventListener('keydown',e=>{if(e.altKey&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();owner.shift(source,['ArrowLeft','ArrowUp'].includes(e.key)?-1:1).catch(err=>new O.Notice(err.message));}});
+    cleanupRegister?.(cancel);
+  }
+  class ImportPicker extends O.FuzzySuggestModal {
+    constructor(owner){super(owner.plugin.app);this.owner=owner;this.setPlaceholder('搜索原有便签笔记，晾回顶部');carrotHomeStyleModal(this);}
+    getItems(){const known=new Set([...this.owner.state.notes,...this.owner.state.archived]);return this.app.vault.getMarkdownFiles().filter(f=>f.path.startsWith('Carrot Home 灵感/')&&!known.has(f.path));}
+    getItemText(f){return f.basename;}
+    onChooseItem(f){this.owner.update(s=>({...s,notes:[...s.notes,f.path]})).catch(e=>new O.Notice(e.message));}
+  }
+  class NoteActions extends CarrotHomeModal {
+    constructor(owner,path){super(owner.plugin.app);this.owner=owner;this.path=path;}
+    async onOpen(){
+      this.modalEl.addClass('csn-note-actions');this.titleEl.setText('随手晾晾 · 这张便签');const v=await this.owner.readNote(this.path);this.contentEl.createEl('p',{text:C.display(v)});
+      if(v.missing){btn(this.contentEl,'移除失效引用',async()=>{await this.owner.removeMissing(this.path);this.close();});return;}
+      btn(this.contentEl,'改一改',()=>{this.close();new Editor(this.owner,this.path).open();},'mod-cta');
+      btn(this.contentEl,'打开原笔记',()=>{this.close();return this.owner.openFile(this.path);});
+      const row=this.contentEl.createDiv({cls:'csn-action-row'});const i=this.owner.state.notes.indexOf(this.path);
+      const up=btn(row,'前移',async()=>{await this.owner.shift(this.path,-1);this.close();});up.disabled=i<=0;
+      const down=btn(row,'后移',async()=>{await this.owner.shift(this.path,1);this.close();});down.disabled=i<0||i===this.owner.state.notes.length-1;
+      btn(this.contentEl,'收起来',async()=>{await this.owner.archive(this.path);this.close();});
+      this.contentEl.createEl('p',{cls:'csn-hint',text:'收起来只从晾绳上撤下，原笔记保留，可在全部便签里晾回来。'});
+    }
+  }
+  class Manager extends CarrotHomeModal {
+    constructor(owner){super(owner.plugin.app);this.owner=owner;this.tab='notes';this.page=0;this.token=0;this.active=false;}
+    onOpen(){
+      this.active=true;this.modalEl.addClass('csn-manager');this.titleEl.setText('随手晾晾 · 全部便签');
+      const top=this.contentEl.createDiv({cls:'csn-manager-toolbar'});btn(top,'贴一张',()=>new Editor(this.owner).open(),'mod-cta');btn(top,'找回原有便签',()=>new ImportPicker(this.owner).open());this.count=top.createSpan({cls:'csn-count'});
+      const tabs=this.contentEl.createDiv({cls:'csn-tabs'});this.tabs={};for(const [key,name] of [['notes','晾着的'],['archived','收起来的']])this.tabs[key]=btn(tabs,name,()=>{this.tab=key;this.page=0;this.render();});
+      this.search=this.contentEl.createEl('input',{cls:'csn-manager-search',attr:{type:'search',placeholder:'搜索标题或正文…','aria-label':'搜索全部便签的标题或正文'}});this.search.addEventListener('input',()=>{this.page=0;this.render();});
+      this.contentEl.createDiv({cls:'csn-hint',text:'拖动手柄排序，或用前移 / 后移；Alt+方向键也可移动。收起来不会删除原笔记。'});
+      this.list=this.contentEl.createDiv({cls:'csn-manager-list',attr:{role:'list','aria-label':'便签排序列表'}});this.paging=this.contentEl.createDiv({cls:'csn-manager-paging'});this.live=this.contentEl.createDiv({cls:'csn-live',attr:{role:'status','aria-live':'polite'}});
+      this.unsubscribe=this.owner.subscribe(()=>this.render());this.render();
+    }
+    async render(){
+      if(!this.active)return;if(this.owner.dragging){this.owner.pendingRefresh=true;return;}
+      const oldFocus=document.activeElement,focusRow=oldFocus?.closest?.('[data-note-path]'),focusTag=focusRow?{path:focusRow.dataset.notePath,label:oldFocus.getAttribute('aria-label')}:null,oldScroll=this.list.scrollTop;
+      const token=++this.token,state=this.owner.state;this.count.textContent=`共 ${state.notes.length+state.archived.length} 张`;
+      this.tabs.notes.textContent=`晾着的 ${state.notes.length}`;this.tabs.archived.textContent=`收起来的 ${state.archived.length}`;
+      for(const [key,b] of Object.entries(this.tabs))b.toggleClass('is-active',key===this.tab);
+      if(this.owner.loadError){
+        this.count.textContent='索引未能载入';this.list.empty();this.paging.empty();
+        this.list.createDiv({cls:'csn-editor-error',attr:{role:'alert'},text:'便签索引暂时无法读取，原文件已保留；这不代表便签为空。请检查 top-area.json 或恢复备份后重载插件。'+this.owner.loadError.message});
+        return;
+      }
+      const paths=state[this.tab],query=this.search.value.trim().toLocaleLowerCase(),values=[];
+      for(let i=0;i<paths.length;i++){const value=await this.owner.readNote(paths[i]);if(!this.active||token!==this.token||this.owner.dragging)return;if(!query||`${value.title}\n${value.body}\n${paths[i]}`.toLocaleLowerCase().includes(query))values.push({path:paths[i],value,index:i});if(i%50===49)await new Promise(r=>setTimeout(r,0));}
+      if(!this.active||token!==this.token||this.owner.dragging)return;
+      this.dragCleanups?.forEach(f=>f());this.dragCleanups=[];this.list.empty();this.paging.empty();
+      const pages=Math.max(1,Math.ceil(values.length/50));this.page=Math.min(this.page,pages-1);
+      if(!values.length)this.list.createDiv({cls:'csn-empty-state',text:query?'没有找到匹配的便签。':this.tab==='notes'?'晾绳还空着，贴一张要记住的事吧。':'暂时没有收起来的便签。'});
+      for(const {path,value,index} of values.slice(this.page*50,this.page*50+50)){
+        const row=this.list.createDiv({cls:'csn-manager-row',attr:{role:'listitem','data-note-path':path}});
+        if(this.tab==='notes'){const handle=btn(row,'拖动便签',()=>{},'csn-row-drag');handle.empty();icon(handle,'grip-vertical');bindDrag(this.owner,handle,path,this.list,'vertical',f=>this.dragCleanups.push(f));}
+        row.createSpan({cls:'csn-order',text:String(index+1)});
+        const text=row.createDiv({cls:'csn-row-text'});const edit=btn(text,value.missing?'原笔记已失效':C.display(value),()=>new Editor(this.owner,path).open(),'csn-row-title');edit.disabled=value.missing;
+        text.createDiv({cls:'csn-row-excerpt',text:value.missing?'原文件已删除或移动；只会移除索引，不删除文件。':value.body||'只有标题的便签'});
+        const actions=row.createDiv({cls:'csn-row-actions'});
+        if(value.missing){btn(actions,'移除失效引用',()=>this.owner.removeMissing(path));continue;}
+        btn(actions,'改一改',()=>new Editor(this.owner,path).open());btn(actions,'打开原笔记',()=>this.owner.openFile(path));
+        if(this.tab==='notes'){
+          const up=btn(actions,'前移',()=>this.owner.shift(path,-1));up.disabled=index===0;
+          const down=btn(actions,'后移',()=>this.owner.shift(path,1));down.disabled=index===paths.length-1;
+          btn(actions,'收起来',()=>this.owner.archive(path));
+        }else btn(actions,'晾回来',()=>this.owner.restore(path));
+      }
+      const prev=btn(this.paging,'上一页',()=>{this.page--;this.render();});prev.disabled=this.page===0;
+      this.paging.createSpan({text:`${this.page+1} / ${pages} 页 · ${values.length} 张`});const next=btn(this.paging,'下一页',()=>{this.page++;this.render();});next.disabled=this.page===pages-1;
+      this.live.textContent=query?`找到 ${values.length} 张便签`:'';
+      this.list.scrollTop=oldScroll;if(focusTag&&(document.activeElement===oldFocus||document.activeElement===document.body)){const row=[...this.list.querySelectorAll('[data-note-path]')].find(el=>el.dataset.notePath===focusTag.path),next=row&&[...row.querySelectorAll('button')].find(el=>el.getAttribute('aria-label')===focusTag.label);next?.focus({preventScroll:true});}
+    }
+    close(){if(this.owner.dragging){this.owner.dragAbort?.();return;}super.close();}
+    onClose(){this.active=false;this.token++;this.unsubscribe?.();this.dragCleanups?.forEach(f=>f());}
+  }
+  return {Editor,Manager,NoteActions,ImportPicker,bindDrag,btn,icon};
+})();
+
+function carrotFocusMomentCore(){
+  const seconds=n=>Number.isFinite(Number(n))&&Number(n)>0?Number(n):null;
+  const clock=n=>{const t=Math.max(0,Math.ceil(Number(n)||0));return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`;};
+  function snapshot(state,settings={},prepared=null){
+    if(!state)return {phase:'missing',label:'启用 TaskNotes 后开始专注',time:null,session:null,button:'启用 TaskNotes'};
+    const session=state.currentSession||null,remaining=Number(state.timeRemaining)||0;
+    if(session){const rest=session.type!=='work';return {phase:rest?'break':'work',session,rest,label:rest?(state.isRunning?'休息中':'休息已暂停'):(state.isRunning?'正在专注':'已暂停'),detail:rest?(session.type==='long-break'?'长休息':session.type==='short-break'?'短休息':'休息'):'',time:Math.max(0,remaining),duration:seconds(session.plannedDuration)*60,path:rest?null:session.taskPath||null,button:remaining<=0?'等待结算':state.isRunning?'暂停':'继续',zero:remaining<=0};}
+    if(['short-break','long-break'].includes(state.nextSessionType)){const duration=seconds(state.nextSessionType==='long-break'?settings.pomodoroLongBreakDuration:settings.pomodoroShortBreakDuration);return {phase:'completed',label:'这一轮完成了',time:duration===null?null:duration*60,button:'开始休息',next:state.nextSessionType,detail:'按 TaskNotes 进入下一步'};}
+    return {phase:'idle',label:state.nextSessionType==='work'?'休息结束，准备下一轮':'这会儿专注什么？',time:prepared!==null?prepared*60:seconds(state.timeRemaining)||((seconds(settings.pomodoroWorkDuration)||0)*60||null),button:'开始专注',next:state.nextSessionType};
+  }
+  const taskValid=(task,settings)=>!!task&&!task.archived&&!(settings?.customStatuses||[]).some(s=>s.value===task.status&&s.isCompleted);
+  function rank(task,now=new Date()){
+    const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`,due=String(task.due||''),scheduled=String(task.scheduled||'');
+    if(due&&(/T\d\d:\d\d/.test(due)?new Date(due).getTime()<now.getTime():due.slice(0,10)<today))return [0,'逾期'];
+    if(due.slice(0,10)===today||scheduled.slice(0,10)===today)return [1,'今天'];return [2,'其它任务'];
+  }
+  return {snapshot,clock,taskValid,rank};
+}
+var CarrotFocusMoment=(()=>{
+  const O=require('obsidian'),C=carrotFocusMomentCore();
+  const icon=(el,name)=>{el.empty();const s=el.createSpan({cls:'cta-icon'});O.setIcon(s,name);return s;};
+  const button=(el,label,run,cls='')=>CarrotStickyUI.btn(el,label,run,cls);
+  class Confirm extends CarrotHomeModal {
+    constructor(focus,title,action){super(focus.owner.plugin.app);this.focus=focus;this.heading=title;this.action=action;this.session=focus.state()?.currentSession;}
+    onOpen(){this.titleEl.setText(this.heading);this.contentEl.createEl('p',{text:'当前：'+(this.focus.currentTitle||'未绑定任务的专注')});this.contentEl.createEl('p',{text:'将调用 TaskNotes 结束当前计时，保留为“中断”记录；不会完成任务，也不会把未到时的一轮记为已完成。'});const error=this.contentEl.createDiv({cls:'csn-editor-error',attr:{role:'status'}}),row=this.contentEl.createDiv({cls:'carrot-home-modal-actions'});button(row,'取消',()=>this.close());const done=button(row,'确认结束本轮',async()=>{if(done.disabled)return;done.disabled=true;try{await this.focus.stop(this.session?.id);this.close();if(this.action==='switch')await this.focus.pickTask(false);}catch(e){error.textContent=e.message;done.disabled=false;}},'mod-warning');done.textContent=this.action==='switch'?'结束后选新任务':'结束本轮';}
+  }
+  class Picker extends O.FuzzySuggestModal {
+    constructor(focus,tasks){super(focus.owner.plugin.app);this.focus=focus;this.tasks=tasks;this.setPlaceholder('搜索任务 · 优先显示逾期和今天');carrotHomeStyleModal(this);}
+    getItems(){return this.tasks;}
+    getItemText(t){const group=C.rank(t)[1],parts=[`【${group}】${t.title||t.path.replace(/.*\//,'').replace(/\.md$/,'')}`];if(t.due)parts.push('截止 '+String(t.due).slice(0,16));if(Array.isArray(t.projects)&&t.projects.length)parts.push(t.projects.map(p=>String(p).replace(/.*\//,'').replace(/\.md$/,'')).join('、'));return parts.join(' · ');}
+    onChooseItem(t){this.focus.owner.update(s=>({...s,focusPath:t.path})).catch(e=>new O.Notice(e.message));}
+  }
+  class Actions extends CarrotHomeModal {
+    constructor(focus){super(focus.owner.plugin.app);this.focus=focus;}
+    onOpen(){
+      this.modalEl.addClass('cfm-actions');this.titleEl.setText('专注一刻 · 更多操作');const f=this.focus,v=C.snapshot(f.state(),f.plugin()?.settings,f.nextDuration);
+      if(!v.session&&v.phase!=='completed'){
+        this.contentEl.createEl('p',{text:'下一轮时长：只影响本轮，不修改 TaskNotes 的全局设置。',cls:'csn-hint'});
+        const row=this.contentEl.createDiv({cls:'cfm-duration-options'});
+        for(const n of [5,15,25,45,60])button(row,`下一轮 ${n} 分钟（仅本轮）`,()=>{f.nextDuration=n;f.refresh();this.close();}).textContent=`${n} 分钟`;
+      }
+      button(this.contentEl,'调整时长：打开 TaskNotes 原生面板',()=>{this.close();f.openPanel();});
+      button(this.contentEl,'TaskNotes 全局设置（影响后续默认时长）',()=>{this.close();f.settings();});
+      button(this.contentEl,'打开番茄钟原生面板',()=>{this.close();f.openPanel();});
+    }
+  }
+  return class FocusMoment {
+    constructor(owner){this.owner=owner;this.busy=false;this.views=new Set();this.metaCache=new Map();this.nextDuration=null;this.currentTitle='';}
+    plugin(){return this.owner.plugin.app.plugins?.plugins?.tasknotes;}
+    state(){return this.plugin()?.pomodoroService?.getState?.();}
+    bridge(){return this.owner.plugin.taskWorkspace?.pomodoro;}
+    settings(){const app=this.owner.plugin.app;app.setting.open();app.setting.openTabById(this.plugin()?'tasknotes':'community-plugins');}
+    openPanel(){const app=this.owner.plugin.app;if(!app.commands.executeCommandById('tasknotes:open-pomodoro-view')){this.settings();new O.Notice(this.plugin()?'TaskNotes 计时面板暂不可用，请检查版本与设置':'启用 TaskNotes 后即可开始专注');}}
+    invalidate(path){this.metaCache.delete(path);}
+    async meta(path){
+      if(!path)return null;const file=this.owner.plugin.app.vault.getAbstractFileByPath(path);if(!(file instanceof O.TFile))return null;
+      const cached=this.metaCache.get(path);if(cached&&cached.mtime===file.stat.mtime&&Date.now()-cached.at<4000)return cached.value;
+      const value=await this.plugin()?.cacheManager?.getTaskInfo?.(path);this.metaCache.set(path,{value,mtime:file.stat.mtime,at:Date.now()});return value;
+    }
+    async locked(operation){
+      const tn=this.plugin(),bridge=this.bridge();if(!bridge?.operate)throw new Error('请重载 Carrot Home 后重试');
+      return bridge.operate(tn,operation);
+    }
+    async pickTask(guard=true){
+      if(guard&&this.state()?.currentSession){new Confirm(this,'换任务前结束当前一轮？','switch').open();return;}
+      const tn=this.plugin();if(!tn?.cacheManager?.getAllTasks){this.openPanel();return;}
+      const tasks=(await tn.cacheManager.getAllTasks()).filter(t=>C.taskValid(t,tn.settings));tasks.sort((a,b)=>C.rank(a)[0]-C.rank(b)[0]||String(a.title||a.path).localeCompare(String(b.title||b.path),'zh-CN'));
+      if(!tasks.length){new O.Notice('没有可选的未完成任务，请先在 TaskNotes 创建任务');return;}new Picker(this,tasks).open();
+    }
+    async stop(expected){return this.locked(async()=>{const service=this.plugin()?.pomodoroService,current=service?.getState?.().currentSession;if(!current||current.id!==expected)throw new Error('当前计时已变化，请重新检查后再结束');if(typeof service.stopPomodoro!=='function'){this.openPanel();throw new Error('此版本不支持从顶部安全结束，请在 TaskNotes 原生面板操作');}await service.stopPomodoro();if(service.getState().currentSession?.id===expected)throw new Error('TaskNotes 尚未结束本轮，请到原生面板检查');this.refresh();});}
+    async main(){
+      if(this.busy)return;this.busy=true;this.refresh();
+      try{
+        const tn=this.plugin(),service=tn?.pomodoroService;
+        if(!tn){this.settings();return;}if(!service?.getState){throw new Error('TaskNotes 番茄钟尚未加载，稍后重试或打开原生面板');}
+        const state=service.getState(),v=C.snapshot(state,tn.settings,this.nextDuration);
+        if(v.session){if(v.zero){this.openPanel();return;}
+          if(state.isRunning){await this.locked(async()=>{if(typeof service.pausePomodoro!=='function')throw new Error('此版本请在 TaskNotes 面板暂停');await service.pausePomodoro();});}
+          else if(v.rest||!v.path){await this.locked(async()=>{if(typeof service.resumePomodoro!=='function')throw new Error('此版本请在 TaskNotes 面板继续');await service.resumePomodoro();});}
+          else {const result=await this.bridge().run(tn,v.path);if(result==='conflict')throw new Error('会话已变化，请到 TaskNotes 检查');}
+        }else if(v.phase==='completed'){
+          await this.locked(async()=>{const current=service.getState();if(current.currentSession)return;if(current.nextSessionType!==v.next)throw new Error('下一步计时已变化，请重新检查');if(typeof service.startBreak!=='function'){this.openPanel();return;}await service.startBreak(v.next==='long-break');});
+        }else{
+          const path=this.owner.state.focusPath;if(!path){await this.pickTask(false);return;}
+          this.metaCache.delete(path);const task=await this.meta(path);if(!C.taskValid(task,tn.settings))throw new Error('上次选择的任务已完成、归档或移除，请换一个任务');
+          const result=await this.bridge().run(tn,path,this.nextDuration??undefined);if(result==='conflict')throw new Error('已有其它计时，请先处理当前一轮');if(result==='busy')throw new Error('计时正在处理，请稍后再试');if(result==='started')this.nextDuration=null;
+        }
+      }catch(e){new O.Notice('专注一刻：'+e.message,7000);}finally{this.busy=false;this.refresh();}
+    }
+    refresh(){for(const v of this.views)v.tick();}
+    mount(root){
+      const head=root.createDiv({cls:'cta-focus-head'});head.createSpan({text:'专注一刻'});const label=head.createSpan({cls:'cfm-phase'});
+      const task=button(root,'选择任务',()=>{const state=this.state(),path=state?.currentSession?.type==='work'?state.currentSession.taskPath:state?.currentSession?null:this.owner.state.focusPath;return path?this.owner.openFile(path):this.pickTask();},'cta-task');
+      const timerRow=root.createDiv({cls:'cta-timer-row'}),time=timerRow.createSpan({cls:'cta-time'}),main=button(timerRow,'开始专注',()=>this.main(),'cta-play cfm-main');
+      const bottom=root.createDiv({cls:'cta-focus-bottom'}),track=bottom.createDiv({cls:'cta-progress'}),fill=track.createDiv({cls:'cta-progress-fill'}),duration=bottom.createSpan({cls:'cta-status'});
+      const hint=root.createDiv({cls:'cfm-hint',attr:{role:'status'}}),foot=root.createDiv({cls:'cta-focus-foot'});
+      const choose=button(foot,'换任务',()=>this.pickTask());const end=button(foot,'结束本轮',()=>new Confirm(this,this.state()?.currentSession?.type==='work'?'结束当前一轮？':'结束当前休息？','stop').open());
+      const more=button(foot,'更多专注操作',()=>new Actions(this).open());more.textContent='更多…';
+      let disposed=false,token=0;
+      const tick=async()=>{
+        if(disposed||!root.isConnected)return;const current=++token,tn=this.plugin();let state,v;
+        try{state=tn?.pomodoroService?.getState?.();v=C.snapshot(state,tn?.settings,this.nextDuration);}catch(e){label.textContent='状态读取失败';hint.textContent='请打开 TaskNotes 检查';main.disabled=true;return;}
+        label.textContent=tn&&!state?'加载中…':v.label;time.textContent=v.time===null?'--:--':C.clock(v.time);
+        main.textContent=v.button;main.setAttribute('aria-label',v.button);main.title=v.button;main.disabled=this.busy||v.zero;
+        const total=v.duration||v.time||0;fill.style.width=`${v.session&&total>0?Math.min(100,Math.max(0,(1-v.time/total)*100)):0}%`;
+        duration.textContent=v.session?`${v.detail||'本轮'} ${total?C.clock(total):'--:--'}`:v.time===null?'':`本轮 ${C.clock(v.time)}`;
+        end.hidden=!v.session;end.textContent=v.rest?'结束休息':'结束本轮';end.setAttribute('aria-label',end.textContent);choose.disabled=this.busy;end.disabled=this.busy;more.disabled=this.busy;
+        root.toggleClass('cta-is-running',!!state?.isRunning);
+        const path=v.session?v.path:this.owner.state.focusPath;
+        if(v.rest){task.textContent=v.detail+'，让眼睛放松一下';task.setAttribute('aria-label','打开 TaskNotes 休息面板');task.onclick=null;hint.textContent=v.zero?'等待 TaskNotes 结算休息':'休息计时由 TaskNotes 同步';task.disabled=true;this.currentTitle=v.detail;return;}
+        task.disabled=false;
+        if(v.session&&!path){task.textContent='未绑定任务的专注';task.disabled=true;hint.textContent=v.zero?'等待 TaskNotes 完成本轮':'可在原生面板查看此会话';this.currentTitle=task.textContent;return;}
+        if(!tn){task.textContent='启用 TaskNotes 后开始专注';task.setAttribute('aria-label','查看 TaskNotes 设置');hint.textContent='便签仍可独立使用';return;}
+        if(!path){task.textContent='选择一件要做的事 ↗';task.setAttribute('aria-label','选择专注任务');hint.textContent=v.phase==='completed'?'开始休息会使用 TaskNotes 配置的时长':'点击选择，或用“换任务”搜索';return;}
+        const meta=await this.meta(path);if(disposed||current!==token)return;
+        const file=this.owner.plugin.app.vault.getAbstractFileByPath(path),valid=C.taskValid(meta,tn.settings);
+        task.textContent=meta?.title||file?.basename||'原任务已移除';task.setAttribute('aria-label','打开原任务：'+task.textContent);task.title=task.textContent;this.currentTitle=task.textContent;
+        hint.textContent=v.zero?'等待 TaskNotes 完成本轮':!valid?(v.session?'原任务已完成、归档或移除；当前计时仍保留':'原任务已完成、归档或移除，请换任务'):v.phase==='completed'?'本轮已完成，任务状态保持不变':this.nextDuration?'单次时长已选，开始时生效':'与 TaskNotes 同步';
+      };
+      const view={tick};this.views.add(view);tick();const onVisible=()=>tick();document.addEventListener('visibilitychange',onVisible);window.addEventListener('focus',onVisible);
+      return {tick,cleanup:()=>{disposed=true;token++;this.views.delete(view);document.removeEventListener('visibilitychange',onVisible);window.removeEventListener('focus',onVisible);}};
+    }
+  };
+})();
+
+/* Optional tools that occupy measured empty header space only. Layout data is never written. */
+function carrotTopAreaCore() {
+  const sticky=carrotStickyNotesCore();
+  const defaultState=sticky.defaults;
+  const safePath=sticky.safePath,normalize=sticky.normalize;
+  const note=(text,fallback)=>{const p=sticky.split(text);return {title:sticky.display(p,fallback),excerpt:p.body};};
+  function slots({left,right,top,bottom,obstacles}) {
+    const visible=obstacles.filter(r=>r.right>r.left&&r.bottom>r.top&&r.bottom>top&&r.top<bottom);
+    const center=visible.filter(r=>r.kind==='center');
+    if (!center.length || bottom-top<154) return [];
+    const lo=Math.min(...center.map(r=>r.left)),hi=Math.max(...center.map(r=>r.right));
+    const candidates=[{kind:'notes',left,top,width:Math.min(340,lo-left-16),height:Math.min(190,bottom-top)},
+      {kind:'focus',left:Math.max(hi+16,right-310),top,width:Math.min(310,right-hi-16),height:Math.min(190,bottom-top)}];
+    return candidates.filter(r=>r.width>=189.9 && !visible.some(o=>r.left<o.right+4&&r.left+r.width>o.left-4&&r.top<o.bottom+4&&r.top+r.height>o.top-4));
+  }
+  // All three columns yield space; mini side cards keep the last usable range.
+  const centerWidth = width => width>=712?Math.max(300,Math.min(720,Math.round((width-32)*720/1370),width-412)):null;
+  const density = (width,height=190) => width<240||height<174?'mini':width<300||height<186?'small':'roomy';
+  function notePage(paths,offset,size){
+    size=size===1?1:2;offset=Math.max(0,Math.min(Math.floor(offset/size)*size,Math.floor(Math.max(0,paths.length-1)/size)*size));
+    return {offset,paths:paths.slice(offset,offset+size),page:Math.floor(offset/size)+1,pages:Math.max(1,Math.ceil(paths.length/size)),hasPrevious:offset>0,hasNext:offset+size<paths.length};
+  }
+  const clock = seconds => {const n=Math.max(0,Math.ceil(Number(seconds)||0));return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;};
+  return {defaultState,safePath,normalize,note,slots,clock,centerWidth,density,notePage};
+}
+
+;(() => {
+  const O=require('obsidian'),core=carrotTopAreaCore();
+  const icon=(parent,name)=>{const el=parent.createSpan({cls:'cta-icon'});O.setIcon(el,name);return el;};
+  const button=(parent,label,action,cls='')=>{const el=parent.createEl('button',{cls:`cta-button ${cls}`,attr:{type:'button','aria-label':label,title:label}});el.addEventListener('click',e=>{e.stopPropagation();Promise.resolve().then(action).catch(error=>new O.Notice(error.message||String(error)));});return el;};
+  const rect=el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};};
+  class TopArea {
+    constructor(plugin){this.plugin=plugin;this.store=new (carrotStickyNotesCore().Store)(carrotStickyNotesCore().adapterIO(plugin.app.vault.adapter),this.path);this.captureQueue=Promise.resolve();this.mounts=new Set();this.listeners=new Set();this.cache=new Map();this.offset=0;this.dragging=false;this.pendingRefresh=false;this.focus=new CarrotFocusMoment(this);}
+    get path(){return `${this.plugin.manifest.dir||`${this.plugin.app.vault.configDir}/plugins/carrot-home`}/top-area.json`;}
+    get state(){return this.store.state;}
+    get loadError(){return this.store.error;}
+    async load(){await this.store.load();}
+    async update(next){const result=await this.store.update(next);this.refresh();return result;}
+    subscribe(fn){this.listeners.add(fn);return ()=>this.listeners.delete(fn);}
+    setDraft(key,value){return this.update(s=>({...s,drafts:{...s.drafts,[key]:value}}));}
+    clearDraft(key){return this.update(s=>{const drafts={...s.drafts};delete drafts[key];return {...s,drafts};});}
+    async readNote(path){
+      const file=this.plugin.app.vault.getAbstractFileByPath(path);
+      if(!(file instanceof O.TFile))return {title:'原笔记已失效',body:'',missing:true,raw:''};
+      const key=`${file.stat.mtime}:${file.stat.size}`,cached=this.cache.get(path);if(cached?.key===key)return cached.value;
+      try{const raw=await this.plugin.app.vault.cachedRead(file),parts=carrotStickyNotesCore().split(raw),value={...parts,raw,missing:false};this.cache.set(path,{key,value});return value;}
+      catch{return {title:'暂时无法读取',body:'请在原笔记中检查文件状态',missing:true,raw:''};}
+    }
+    capture(title,body){const work=this.captureQueue.catch(()=>{}).then(()=>this.captureOne(title,body));this.captureQueue=work;return work;}
+    async captureOne(title,body){
+      const C=carrotStickyNotesCore();if(this.loadError)throw new Error('便签存储异常，尚未创建文件；请检查 top-area.json');
+      const content=C.createText(title,body),vault=this.plugin.app.vault,folder='Carrot Home 灵感';
+      if(!vault.getAbstractFileByPath(folder))try{await vault.createFolder(folder);}catch(e){if(!vault.getAbstractFileByPath(folder))throw e;}
+      const name=C.display({title,body}).replace(/[\\/:*?"<>|#\[\]\u0000-\u001f]/g,' ').trim().slice(0,70)||'便签';let file;
+      for(let n=0;n<10000;n++){const path=`${folder}/${name}${n?`-${n+1}`:''}.md`;if(vault.getAbstractFileByPath(path))continue;try{file=await vault.create(path,content);break;}catch(error){if(vault.getAbstractFileByPath(path))continue;throw error;}}
+      if(!file)throw new Error('同名文件过多，请换一个标题；没有覆盖原笔记');
+      try{await this.update(s=>({...s,notes:[file.path,...s.notes]}));this.offset=0;this.refresh();}
+      catch(error){new O.Notice(`便签原文已保存在 ${file.path}；索引没有保存，请用“全部便签 → 找回原有便签”找回。`,12000);throw error;}
+      return file;
+    }
+    async editNote(path,title,body,baseText){
+      const file=this.plugin.app.vault.getAbstractFileByPath(path);if(!(file instanceof O.TFile))throw new Error('原笔记已移除，草稿已保留');
+      const vault=this.plugin.app.vault;if(typeof vault.process!=='function')throw new Error('当前 Obsidian 不支持安全编辑，请打开原笔记修改');
+      await vault.process(file,current=>{if(current!==baseText)throw new Error('原笔记已在其它位置修改，未覆盖新内容；草稿已保留，请打开原笔记对照后重新编辑');return carrotStickyNotesCore().rewrite(current,title,body);});
+      this.cache.delete(path);this.refresh();
+    }
+    reorder(path,target,after=false){return this.update(s=>({...s,notes:carrotStickyNotesCore().move(s.notes,path,target,after)}));}
+    shift(path,delta){return this.update(s=>({...s,notes:carrotStickyNotesCore().shift(s.notes,path,delta)}));}
+    archive(path){return this.update(s=>({...s,notes:s.notes.filter(p=>p!==path),archived:[...s.archived.filter(p=>p!==path),path]}));}
+    restore(path){return this.update(s=>({...s,notes:s.notes.includes(path)?s.notes:[...s.notes,path],archived:s.archived.filter(p=>p!==path)}));}
+    removeMissing(path){if(this.plugin.app.vault.getAbstractFileByPath(path))return Promise.reject(new Error('原文件仍然存在，请使用“收起来”保留便签'));return this.update(s=>{const drafts={...s.drafts};delete drafts[path];return {...s,notes:s.notes.filter(p=>p!==path),archived:s.archived.filter(p=>p!==path),drafts};});}
+    start(){
+      const vault=this.plugin.app.vault;
+      this.plugin.registerEvent(vault.on('rename',(file,oldPath)=>{this.cache.clear();const all=[...this.state.notes,...this.state.archived,this.state.focusPath];if(all.some(p=>p===oldPath||p.startsWith(oldPath+'/')))this.update(s=>carrotStickyNotesCore().rename(s,oldPath,file.path)).catch(e=>new O.Notice(e.message));}));
+      this.plugin.registerEvent(vault.on('modify',file=>{this.cache.delete(file.path);this.focus.invalidate(file.path);this.focus.refresh();if([...this.state.notes,...this.state.archived].includes(file.path))this.refresh();}));
+      this.plugin.registerEvent(vault.on('delete',()=>{this.cache.clear();this.refresh();}));
+    }
+    taskNotes(){return this.plugin.app.plugins?.plugins?.tasknotes;}
+    async openFile(path){const file=this.plugin.app.vault.getAbstractFileByPath(path);if(!(file instanceof O.TFile))throw new Error('笔记已移动或删除，请从文件列表查找');await this.plugin.app.workspace.getLeaf(false).openFile(file);}
+    openPanel(){if(!this.plugin.app.commands.executeCommandById('tasknotes:open-pomodoro-view'))new O.Notice('请先安装并启用 TaskNotes；专注计时由 TaskNotes 管理');}
+    pickTask(){return this.focus.pickTask();}
+    refresh(){if(this.dragging){this.pendingRefresh=true;return;}for(const mount of this.mounts){if(!mount.root.isConnected)continue;mount.notes();mount.tick();mount.place();}for(const listener of this.listeners)listener();}
+    mount(view){
+      const content=view?.contentEl;if(!content?.querySelector)return;
+      const header=content.querySelector('.hearth-header'),scroll=content.querySelector('.hearth-scroll'),inner=content.querySelector('.hearth-inner'),board=content.querySelector('.hearth-dashboard');
+      if(!header||!scroll||!inner||!board||view.arrangeMode||O.Platform.isMobile)return;
+      const root=header.createDiv({cls:'cta-layer',attr:{'aria-label':'顶部留白工具'}}),left=root.createDiv({cls:'cta-notes',attr:{'aria-label':'随手晾晾'}}),right=root.createDiv({cls:'cta-focus',attr:{'aria-label':'专注一刻'}});
+      const compact=root.createDiv({cls:'cta-compact',attr:{'aria-label':'随手晾晾与专注一刻'}});
+      const compactNotes=button(compact,'随手晾晾：打开全部便签',()=>new CarrotStickyUI.Manager(this).open());icon(compactNotes,'sticky-note');const compactNotesText=compactNotes.createSpan();
+      const compactFocus=button(compact,'专注一刻：打开计时面板',()=>this.focus.openPanel());icon(compactFocus,'timer');const compactFocusText=compactFocus.createSpan();
+      let disposed=false,raf=0,readToken=0,busy=false,lastTaskPath='',cachedTitle='',adaptiveWidth=null,notesPerPage=2;
+      const wire=left.createDiv({cls:'cta-wire'});wire.innerHTML='<svg viewBox="0 0 340 32" fill="none" aria-hidden="true"><path d="M7 7Q170 40 333 7" stroke="currentColor" stroke-width="1.2"/><circle cx="7" cy="7" r="3" fill="currentColor"/><circle cx="333" cy="7" r="3" fill="currentColor"/></svg>';
+      const notesRow=left.createDiv({cls:'cta-note-row'}),noteTools=left.createDiv({cls:'cta-note-tools'});
+      const U=CarrotStickyUI,C=carrotStickyNotesCore();
+      const add=button(noteTools,'贴一张',()=>new U.Editor(this).open());icon(add,'plus');add.createSpan({text:'贴一张'});
+      const all=button(noteTools,'全部便签',()=>new U.Manager(this).open());all.createSpan({text:'全部便签'});
+      const prev=button(noteTools,'上一组便签',()=>{this.offset=Math.max(0,this.offset-notesPerPage);this.refresh();});icon(prev,'chevron-left');
+      const page=noteTools.createSpan({cls:'csn-top-page'});
+      const next=button(noteTools,'下一组便签',()=>{this.offset+=notesPerPage;this.refresh();});icon(next,'chevron-right');
+      const focusMount=this.focus.mount(right),tick=()=>{
+        focusMount.tick();compactNotesText.textContent=`随手晾晾 · ${this.state.notes.length+this.state.archived.length}`;
+        let snapshot;try{snapshot=carrotFocusMomentCore().snapshot(this.focus.state(),this.focus.plugin()?.settings,this.focus.nextDuration);}catch{}
+        compactFocusText.textContent='专注一刻'+(snapshot?.time!=null?' · '+core.clock(snapshot.time):'');
+        compactFocus.title=(snapshot?.label||'打开 TaskNotes 计时面板')+'；点击打开完整计时面板';
+      };
+      let dragCleanups=[];
+      const notes=async()=>{
+        if(this.dragging){this.pendingRefresh=true;return;}
+        const token=++readToken;dragCleanups.forEach(f=>f());dragCleanups=[];notesRow.empty();
+        const length=this.state.notes.length,paging=core.notePage(this.state.notes,this.offset,notesPerPage);this.offset=paging.offset;
+        prev.disabled=!paging.hasPrevious;next.disabled=!paging.hasNext;page.textContent=`${paging.page}/${paging.pages}`;
+        for(const [b,label] of [[prev,notesPerPage===1?'上一张便签':'上一组便签'],[next,notesPerPage===1?'下一张便签':'下一组便签']]){b.setAttribute('aria-label',label);b.title=label;}
+        all.title=`全部便签：晾着 ${length} 张，收起 ${this.state.archived.length} 张；可拖拽排序`;const paths=paging.paths;
+        for(let i=0;i<notesPerPage;i++){
+          const path=paths[i],card=notesRow.createDiv({cls:`cta-note cta-note-${i}`,attr:path?{'data-note-path':path}:undefined});
+          if(!path){const empty=button(card,'贴一张便签',()=>new U.Editor(this).open(),'cta-empty');icon(empty,i?'sticky-note':'plus');empty.createSpan({text:i?'备忘、摘录\n都可以晾在这里':'贴一张，要记住的事'});continue;}
+          if(notesPerPage>1){const handle=button(card,'拖动纸夹排序',()=>{},'csn-note-drag');handle.createSpan({cls:'cta-clip',attr:{'aria-hidden':'true'}});U.bindDrag(this,handle,path,notesRow,'horizontal',f=>dragCleanups.push(f));}
+          else card.createSpan({cls:'csn-mini-clip',attr:{'aria-hidden':'true'}}).createSpan({cls:'cta-clip'});
+          const title=button(card,'改一改便签',()=>new U.Editor(this,path).open(),'cta-note-title');title.textContent='便签';
+          const body=button(card,'改一改便签正文',()=>new U.Editor(this,path).open(),'cta-note-excerpt');
+          const menu=button(card,'便签操作',()=>new U.NoteActions(this,path).open(),'csn-note-menu');icon(menu,'ellipsis');
+          const value=await this.readNote(path);if(disposed||token!==readToken||this.dragging)return;
+          title.textContent=C.display(value);title.title=value.missing?'原笔记已失效；打开全部便签处理':C.display(value);body.textContent=value.body||'点击改一改…';
+          title.disabled=value.missing;body.disabled=value.missing;
+          if(value.missing){card.addClass('csn-missing');menu.title='打开全部便签处理失效引用';}
+        }
+        if(this.loadError){notesRow.empty();notesRow.createDiv({cls:'cta-store-error',text:this.loadError.message});add.disabled=true;}
+      };
+      const place=()=>{
+        if(disposed)return;{
+          if(this.dragging){this.pendingRefresh=true;return;}
+          root.hidden=!this.state.enabled||view.arrangeMode;
+          const bounds=inner.getBoundingClientRect();
+          const desiredWidth=root.hidden?null:core.centerWidth(bounds.width);
+          if(desiredWidth!==adaptiveWidth){
+            adaptiveWidth=desiredWidth;header.toggleClass('cta-adaptive-center',desiredWidth!==null);
+            if(desiredWidth===null){header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-title-fit');}
+            else {
+              header.style.setProperty('--cta-center-width',`${desiredWidth}px`);header.style.setProperty('--cta-title-fit','1');
+              const title=header.querySelector(':scope > .hearth-title'),text=title?.querySelector('.hearth-title-text');
+              if(text){const textWidth=text.scrollWidth,extra=[...title.children].filter(e=>e!==text).reduce((n,e)=>n+e.getBoundingClientRect().width,0)+Math.max(0,title.children.length-1)*(parseFloat(getComputedStyle(title).columnGap)||0);const fit=Math.min(1,Math.max(.4,(desiredWidth-extra)/Math.max(1,textWidth)));header.style.setProperty('--cta-title-fit',String(fit));}
+            }
+          }
+          const base=header.getBoundingClientRect(),end=board.getBoundingClientRect();
+          const center=[...header.querySelectorAll(':scope > .hearth-title,:scope > .hearth-search-wrap')].map(el=>({...rect(el),kind:'center'}));
+          const others=[...content.querySelectorAll('.hearth-card,.hearth-dash-switcher-zone,.hearth-arrange-button,.hearth-home-toolbar')].map(el=>({...rect(el),kind:'protected'}));
+          const spaces=core.slots({left:bounds.left,right:bounds.right,top:base.top+6,bottom:end.top-12,obstacles:[...center,...others]});
+          left.hidden=true;right.hidden=true;
+          for(const slot of spaces){
+            const panel=slot.kind==='notes'?left:right,mode=core.density(slot.width,slot.height),height=Math.min(slot.height,mode==='mini'?160:mode==='small'?176:190);
+            panel.hidden=false;panel.dataset.density=mode;panel.style.setProperty('--cta-ui-scale',String(Math.max(.82,Math.min(1,slot.width/(slot.kind==='notes'?340:310)))));
+            Object.assign(panel.style,{left:`${slot.left-base.left}px`,top:`${slot.top-base.top}px`,width:`${slot.width}px`,height:`${height}px`});
+            if(slot.kind==='notes'){const size=mode==='mini'?1:2;if(size!==notesPerPage){notesPerPage=size;notes();}}
+          }
+          root.dataset.available=spaces.map(x=>x.kind).join(',');
+          compactNotes.hidden=!left.hidden;compactFocus.hidden=!right.hidden;compact.hidden=(!left.hidden&&!right.hidden)||root.hidden;
+          if(!compact.hidden){
+            const nav=content.querySelector('.hearth-dash-switcher-zone')?.getBoundingClientRect();
+            const anchor=nav?.height?nav.bottom+4:base.top;
+            const visibleCenter=center.filter(r=>r.right>r.left&&r.bottom>r.top);
+            const limit=visibleCenter.length?Math.min(...visibleCenter.map(r=>r.top))-4:base.top;
+            compact.hidden=limit-anchor<26||bounds.width<270;
+            if(!compact.hidden){const width=Math.min(bounds.width,320);Object.assign(compact.style,{left:`${bounds.left-base.left+(bounds.width-width)/2}px`,top:`${anchor-base.top}px`,width:`${width}px`,height:'26px'});root.dataset.available+=(root.dataset.available?',':'')+'compact';}
+          }
+        }
+      };
+      const mounted={root,notes,tick,place};this.mounts.add(mounted);notes();tick();place();
+      const observer=new ResizeObserver(place);observer.observe(header);observer.observe(inner);observer.observe(board);
+      const layoutRef=this.plugin.app.workspace.on('layout-change',place),activeRef=this.plugin.app.workspace.on('active-leaf-change',()=>{place();tick();});
+      window.addEventListener('resize',place);
+      const interval=window.setInterval(()=>{if(root.isConnected)tick();},1000);
+      const cleanup=()=>{if(disposed)return;disposed=true;readToken++;cancelAnimationFrame(raf);observer.disconnect();clearInterval(interval);this.plugin.app.workspace.offref(layoutRef);this.plugin.app.workspace.offref(activeRef);window.removeEventListener('resize',place);dragCleanups.forEach(f=>f());focusMount.cleanup();this.mounts.delete(mounted);header.removeClass('cta-adaptive-center');header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-title-fit');root.remove();};
+      mounted.cleanup=cleanup;view.renderChild?.register(cleanup);
+    }
+    remount(){for(const m of [...this.mounts])m.cleanup();for(const leaf of this.plugin.app.workspace.getLeavesOfType('carrot-home-view'))this.mount(leaf.view);}
+    destroy(){this.dragAbort?.();for(const m of [...this.mounts])m.cleanup();this.listeners.clear();}
+  }
+  const previousRender=En.prototype.render;
+  En.prototype.render=function(...args){const result=previousRender.apply(this,args);this.plugin.topArea?.mount(this);return result;};
+  const previousLoad=bs.prototype.onload;
+  bs.prototype.onload=async function(){
+    this.topArea=new TopArea(this);await this.topArea.load();const result=await previousLoad.call(this);
+    this.topArea.start();this.register(()=>this.topArea.destroy());
+    this.addCommand({id:'capture-top-inspiration',name:'随手晾晾：贴一张',callback:()=>new CarrotStickyUI.Editor(this.topArea).open()});
+    this.addCommand({id:'toggle-top-tools',name:'顶部工具：显示／隐藏',callback:()=>this.topArea.update(state=>({...state,enabled:!state.enabled})).catch(e=>new O.Notice(e.message))});
+    this.addCommand({id:'sticky-notes-all',name:'随手晾晾：全部便签',callback:()=>new CarrotStickyUI.Manager(this.topArea).open()});
+    this.addCommand({id:'focus-moment-open',name:'专注一刻：打开',callback:()=>this.topArea.focus.openPanel()});
+    this.app.workspace.onLayoutReady(()=>this.topArea.remount());return result;
+  };
 })();
 
 /* Carrot Home portable edition: BRAT edition: embedded defaults and fictional local samples. */
