@@ -26,7 +26,7 @@ Carrot Home 基于 [ondreu/Hearth](https://github.com/ondreu/Hearth) 定制，�
 
 便签为真实 Markdown，排序、收起、草稿和专注选择使用独立 `top-area.json`，升级时保留已有文件。功能、数据兼容与桌面验证范围见 [顶部工具说明](docs/top-area.md)。已随 2.1.0 发布。
 
-左侧便签采用 B“木夹晾晒”风格。统一设置入口：**设置 → Carrot Home → 顶部工具**。2.1.1 修正：左侧绳头按钮改为就地折叠/展开，移除首页独立“顶部工具”按钮；区域显示与恢复放入主页原有右上角“更多选项（…）”菜单。
+左侧便签采用 B“木夹晾晒”风格。统一设置入口：**设置 → Carrot Home → 顶部工具**。2.1.2：左侧绳头按钮向左收绳，收起后留下固定钉上的单圈，点击单圈向右展开，移除首页独立“顶部工具”按钮；区域显示与恢复放入主页原有右上角“更多选项（…）”菜单。
 
 ## 效果展示
 
@@ -60,7 +60,7 @@ Carrot Home 基于 [ondreu/Hearth](https://github.com/ondreu/Hearth) 定制，�
 3. 选择跟踪最新版本，添加后在社区插件列表启用 **Carrot Home**。
 4. 从左侧功能区或命令面板打开 **Carrot Home**。
 
-当前发布版本为 [2.1.1](https://github.com/carrot-tree/carrot-home/releases/tag/2.1.1)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
+当前发布版本为 [2.1.2](https://github.com/carrot-tree/carrot-home/releases/tag/2.1.2)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
 
 ### 按需安装配套插件
 
@@ -126,3 +126,5 @@ node --test tests/*.test.cjs
 </details>
 
 遇到问题请提交 [Issue](https://github.com/carrot-tree/carrot-home/issues)，注明 Obsidian、Carrot Home、TaskNotes 与 Carrot Gantt 版本，并使用虚构笔记说明复现步骤。
+
+发布说明引用 Release 图片附件时，在工作流创建版本后上传对应 PNG；不要将正式库截图或数据加入附件。

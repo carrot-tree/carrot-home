@@ -104,8 +104,9 @@ function carrotTopAreaCore() {
       const hideArea=(parent,kind,name,cls,glyph='eye-off')=>{const el=button(parent,'隐藏'+name+'（可从主页更多选项恢复）',async()=>{if(el.disabled)return;el.disabled=true;try{await this.setAreaVisible(kind,false);focusMore();}finally{el.disabled=!!this.loadError;}},'cta-hide-area '+cls);if(glyph)icon(el,glyph);return el;};
       let disposed=false,raf=0,readToken=0,busy=false,lastTaskPath='',cachedTitle='',adaptiveWidth=null,notesPerPage=2;
       const wire=left.createDiv({cls:'cta-wire'});wire.innerHTML='<svg viewBox="0 0 340 32" preserveAspectRatio="none" fill="none" aria-hidden="true"><path d="M7 7Q170 42 333 7" stroke="currentColor" stroke-width="1.8" vector-effect="non-scaling-stroke"/><path d="M7 7Q170 42 333 7" stroke="var(--cta-rope-highlight)" stroke-width=".5" stroke-dasharray="2 4"/><circle cx="7" cy="7" r="3.5" fill="var(--cta-wood-border)"/></svg>';
-      const foldNotes=button(left,'折叠便签（保留晾绳，再点展开）',async()=>{if(foldNotes.disabled)return;foldNotes.disabled=true;try{await this.update(s=>({...s,notesCollapsed:!s.notesCollapsed}));foldNotes.focus({preventScroll:true});}finally{foldNotes.disabled=!!this.loadError;}},'cta-hide-area cta-fold-notes');
+      const foldNotes=button(left,'向左收起便签（再点展开）',async()=>{if(foldNotes.disabled)return;foldNotes.disabled=true;try{await this.update(s=>({...s,notesCollapsed:!s.notesCollapsed}));foldNotes.focus({preventScroll:true});}finally{foldNotes.disabled=!!this.loadError;}},'cta-hide-area cta-fold-notes');
       const reel=foldNotes.createSpan({cls:'cta-rope-reel',attr:{'aria-hidden':'true'}});O.setIcon(reel,'chevrons-left');
+      const coil=foldNotes.createSpan({cls:'cta-rope-coil',attr:{'aria-hidden':'true'}});coil.innerHTML='<svg viewBox="0 0 32 38" fill="none"><path d="M16 8C11 13 9 19 9 24C9 31 23 31 23 24C23 19 21 13 16 8Z" stroke="var(--cta-rope-color)" stroke-width="1.8" stroke-linecap="round"/><circle cx="16" cy="5" r="3.5" fill="var(--cta-wood-border)" stroke="var(--cta-wood-ink)" stroke-width=".8"/><path d="M15 4H17" stroke="var(--cta-paper)" stroke-width="1" stroke-linecap="round"/></svg>';
       const notesRow=left.createDiv({cls:'cta-note-row'}),noteTools=left.createDiv({cls:'cta-note-tools'});
       const U=CarrotStickyUI,C=carrotStickyNotesCore();
       const add=button(noteTools,'贴一张',()=>new U.Editor(this).open());icon(add,'plus');add.createSpan({text:'贴一张'});
@@ -124,11 +125,13 @@ function carrotTopAreaCore() {
       let dragCleanups=[];
       const notes=async()=>{
         if(this.dragging){this.pendingRefresh=true;return;}
-        const token=++readToken;dragCleanups.forEach(f=>f());dragCleanups=[];notesRow.empty();
-        const collapsed=this.state.notesCollapsed===true;notesRow.hidden=noteTools.hidden=collapsed;left.toggleClass('is-collapsed',collapsed);
-        foldNotes.setAttribute('aria-expanded',String(!collapsed));const foldLabel=collapsed?'展开便签':'折叠便签（保留晾绳，再点展开）';foldNotes.setAttribute('aria-label',foldLabel);foldNotes.title=foldLabel;
-        O.setIcon(reel,collapsed?'chevrons-down':'chevrons-left');for(const path of wire.querySelectorAll('path'))path.setAttribute('d',collapsed?'M7 7Q170 7 333 7':'M7 7Q170 42 333 7');
+        const token=++readToken,collapsed=this.state.notesCollapsed===true;left.toggleClass('is-collapsed',collapsed);
+        notesRow.inert=noteTools.inert=collapsed;notesRow.setAttribute('aria-hidden',String(collapsed));noteTools.setAttribute('aria-hidden',String(collapsed));
+        foldNotes.setAttribute('aria-expanded',String(!collapsed));const foldLabel=collapsed?'拉开晾绳，向右展开便签':'向左收绳（再点绳圈展开）';foldNotes.setAttribute('aria-label',foldLabel);foldNotes.title=foldLabel;
+        O.setIcon(reel,collapsed?'chevrons-right':'chevrons-left');for(const path of wire.querySelectorAll('path'))path.setAttribute('d',collapsed?'M7 7Q170 7 333 7':'M7 7Q170 42 333 7');
+        // Retain the existing cards while the leftward wipe runs; hidden controls are inert.
         if(collapsed)return;
+        dragCleanups.forEach(f=>f());dragCleanups=[];notesRow.empty();
         const length=this.state.notes.length,paging=core.notePage(this.state.notes,this.offset,notesPerPage);this.offset=paging.offset;
         prev.disabled=!paging.hasPrevious;next.disabled=!paging.hasNext;page.textContent=`${paging.page}/${paging.pages}`;
         for(const [b,label] of [[prev,notesPerPage===1?'上一张便签':'上一组便签'],[next,notesPerPage===1?'下一张便签':'下一组便签']]){b.setAttribute('aria-label',label);b.title=label;}
@@ -171,7 +174,7 @@ function carrotTopAreaCore() {
           for(const slot of spaces){
             const panel=slot.kind==='notes'?left:right,mode=core.density(slot.width,slot.height),height=Math.min(slot.height,mode==='mini'?160:mode==='small'?176:190);
             panel.hidden=false;panel.dataset.density=mode;panel.style.setProperty('--cta-ui-scale',String(Math.max(.82,Math.min(1,slot.width/(slot.kind==='notes'?340:310)))));
-            Object.assign(panel.style,{left:`${slot.left-base.left}px`,top:`${slot.top-base.top}px`,width:`${slot.width}px`,height:`${slot.kind==='notes'&&this.state.notesCollapsed?28:height}px`});
+            Object.assign(panel.style,{left:`${slot.left-base.left}px`,top:`${slot.top-base.top}px`,width:`${slot.width}px`,height:`${height}px`});
             if(slot.kind==='notes'){const size=mode==='mini'?1:2;if(size!==notesPerPage){notesPerPage=size;notes();}}
           }
           root.dataset.available=spaces.map(x=>x.kind).join(',');

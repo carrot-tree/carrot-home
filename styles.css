@@ -14200,7 +14200,7 @@ body.hearth-dv-resizing {
 .hearth-view button.cta-hide-area {width:24px;height:24px;min-height:24px;padding:4px;flex:none;border-radius:5px;color:var(--text-muted);}
 .hearth-view .cta-hide-area .cta-icon svg {width:13px;height:13px;}
 /* A small reel sits on the right anchor of the clothesline. */
-.hearth-view button.cta-fold-notes {position:absolute;right:calc(2.058824% - 14px);top:-8px;width:28px;height:28px;min-height:28px;padding:4.5px;border-radius:50%;z-index:1;background:transparent;color:var(--cta-rope-color);}
+.hearth-view button.cta-fold-notes {position:absolute;left:calc(97.941176% - 14px);top:-8px;width:28px;height:28px;min-height:28px;padding:4.5px;border-radius:50%;z-index:1;background:transparent;color:var(--cta-rope-color);}
 .hearth-view button.cta-fold-notes:hover {background:transparent;color:var(--cta-rope-color);}
 .hearth-view .cta-rope-reel {width:19px;height:19px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:none;border:1px solid var(--cta-wood-border);border-radius:5px;background:var(--cta-paper);color:var(--cta-wood-ink);transition:background .12s ease;}
 .hearth-view .cta-rope-reel svg {width:12px;height:12px;stroke-width:1.7;}
@@ -14220,3 +14220,19 @@ body.hearth-dv-resizing {
 .hearth-view .cta-notes[data-density="small"] .cta-clip {width:10px;height:26px;}
 .hearth-view .cta-notes[data-density="mini"] .cta-clip {width:9px;height:24px;}
 .hearth-view .cta-notes[data-density="small"] .cta-clip::after,.hearth-view .cta-notes[data-density="mini"] .cta-clip::after {top:10px;}
+
+/* Fold along the line toward the fixed left anchor; reserve the same header footprint. */
+.hearth-view .cta-notes .cta-wire {clip-path:inset(-10px -12px -10px -10px);transition:clip-path .22s ease;}
+.hearth-view .cta-notes .cta-note-row,.hearth-view .cta-notes .cta-note-tools {clip-path:inset(-24px -10px -12px -10px);transform:translateX(0);opacity:1;transition:clip-path .22s ease,transform .22s ease,opacity .18s ease;}
+.hearth-view button.cta-fold-notes {transition:left .22s ease;pointer-events:auto;}
+.hearth-view .cta-notes.is-collapsed {pointer-events:none;}
+.hearth-view .cta-notes.is-collapsed .cta-wire {clip-path:inset(-10px 97.941176% -10px -10px);}
+.hearth-view .cta-notes.is-collapsed button.cta-fold-notes {left:calc(2.058824% - 16px);top:1px;width:32px;height:38px;min-height:38px;padding:0;border-radius:6px;}
+.hearth-view .cta-notes.is-collapsed .cta-note-row,.hearth-view .cta-notes.is-collapsed .cta-note-tools {clip-path:inset(-24px 100% -12px -10px);transform:translateX(-12px);opacity:0;pointer-events:none;}
+@media (prefers-reduced-motion:reduce) {.hearth-view .cta-notes .cta-wire,.hearth-view .cta-notes .cta-note-row,.hearth-view .cta-notes .cta-note-tools,.hearth-view button.cta-fold-notes {transition:none;}}
+
+.hearth-view .cta-rope-coil {display:none;width:32px;height:38px;pointer-events:none;}
+.hearth-view .cta-rope-coil svg {display:block;width:32px;height:38px;}
+.hearth-view .cta-notes.is-collapsed .cta-fold-notes .cta-rope-reel {display:none;}
+.hearth-view .cta-notes.is-collapsed .cta-fold-notes .cta-rope-coil {display:block;}
+.hearth-view .cta-notes.is-collapsed button.cta-fold-notes:hover {background:color-mix(in srgb,var(--cta-wood-border) 10%,transparent);}
