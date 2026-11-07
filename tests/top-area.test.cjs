@@ -11,7 +11,7 @@ test('sidecar normalization preserves compatible user fields and rejects unsafe 
  assert.throws(()=>core.normalize({version:2,notes:['../bad.md']}));assert.equal(core.safePath('a\u0000.md'),false);
 });
 test('unknown/corrupt sidecars fail closed',()=>{for(const value of [null,{},[],{version:3,notes:[]},{version:1,notes:'wrong'}])assert.throws(()=>core.normalize(value));});
-test('empty initial state contains no invented note or task',()=>assert.deepEqual(plain(core.defaultState()),{version:2,enabled:true,notesEnabled:true,focusEnabled:true,notes:[],archived:[],drafts:{},focusPath:''}));
+test('empty initial state contains no invented note or task',()=>assert.deepEqual(plain(core.defaultState()),{version:2,enabled:true,notesEnabled:true,focusEnabled:true,notesCollapsed:false,notes:[],archived:[],drafts:{},focusPath:''}));
 test('layout uses only measured empty side rectangles',()=>{
  const obstacle={left:450,right:1170,top:80,bottom:240,kind:'center'};
  const slots=plain(core.slots({left:20,right:1600,top:80,bottom:280,obstacles:[obstacle]}));
@@ -68,4 +68,12 @@ test('homepage restore enables the master without changing the other area, notes
  await set.call(owner,'notes',true);assert.deepEqual(plain(state),{enabled:true,notesEnabled:true,focusEnabled:false,notes:['kept.md'],focusPath:'task.md'});
  await set.call(owner,'notes',false);assert.equal(state.enabled,true);assert.equal(state.notesEnabled,false);
  await assert.rejects(set.call(owner,'other',true),/未知/);
+});
+test('existing pane menu retains its own items and offers recovery while both areas are hidden',async()=>{
+ class HomeView{render(){}onPaneMenu(menu,source){menu.original=source;return 'kept';}}class Plugin{async onload(){}}
+ const sandbox={require:()=>({Notice:class{}}),En:HomeView,bs:Plugin};vm.runInNewContext(sticky+'\n'+source,sandbox);
+ const end=source.indexOf('  const previousRender=En.prototype.render;'),extract={require:()=>({})};vm.runInNewContext(sticky+'\n'+source.slice(0,end)+'\nglobalThis.TestTopArea=TopArea;})();',extract);
+ let state={enabled:false,notesEnabled:false,focusEnabled:false,notesCollapsed:true,notes:['keep.md']};const owner={get state(){return state;},update:async fn=>state=fn(state),loadError:null,plugin:{app:{commands:{executeCommandById:()=>true}}},setAreaVisible:extract.TestTopArea.prototype.setAreaVisible,appendVisibilityMenu:extract.TestTopArea.prototype.appendVisibilityMenu};
+ const items=[],menu={addSeparator(){},addItem(fn){const item={setTitle(t){this.title=t;return this;},setChecked(v){this.checked=v;return this;},setDisabled(v){this.disabled=v;return this;},setIcon(){return this;},onClick(fn){this.run=fn;return this;}};fn(item);items.push(item);return this;}};
+ const view=new HomeView();view.plugin={topArea:owner};assert.equal(view.onPaneMenu(menu,'more-options'),'kept');assert.equal(menu.original,'more-options');assert.equal(items.find(x=>x.title==='显示随手晾晾').checked,false);await items.find(x=>x.title==='显示随手晾晾').run();assert.equal(state.enabled,true);assert.equal(state.notesEnabled,true);assert.equal(state.notesCollapsed,true);assert.deepEqual(state.notes,['keep.md']);
 });

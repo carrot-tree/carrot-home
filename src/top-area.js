@@ -41,13 +41,12 @@ function carrotTopAreaCore() {
       const flag={notes:'notesEnabled',focus:'focusEnabled'}[kind];if(!flag)throw new Error('未知顶部区域');
       return this.update(state=>({...state,[flag]:visible,...(visible?{enabled:true}:{})}));
     }
-    showVisibilityMenu(anchor){
-      this.visibilityMenu?.hide();const menu=new O.Menu();this.visibilityMenu=menu;menu.setUseNativeMenu?.(false);const shown=core.visibility(this.state),run=action=>()=>Promise.resolve().then(action).catch(e=>new O.Notice('显示设置未保存：'+e.message));
+    appendVisibilityMenu(menu){
+      menu.addSeparator();const shown=core.visibility(this.state),run=action=>()=>Promise.resolve().then(action).catch(e=>new O.Notice('显示设置未保存：'+e.message));
       menu.addItem(item=>item.setTitle('显示顶部工具').setChecked(this.state.enabled!==false).setDisabled(!!this.loadError).onClick(run(()=>this.update(s=>({...s,enabled:s.enabled===false})))));
       menu.addSeparator();
       for(const [kind,name] of [['notes','随手晾晾'],['focus','专注一刻']])menu.addItem(item=>item.setTitle('显示'+name).setChecked(shown[kind]).setDisabled(!!this.loadError).onClick(run(()=>this.setAreaVisible(kind,!shown[kind]))));
       menu.addSeparator();menu.addItem(item=>item.setTitle('更多顶部工具设置…').setIcon('settings').onClick(()=>this.plugin.app.commands.executeCommandById('carrot-home:top-tools-settings')));
-      const r=anchor.getBoundingClientRect();menu.showAtPosition({x:r.left,y:r.bottom+4});
     }
     subscribe(fn){this.listeners.add(fn);return ()=>this.listeners.delete(fn);}
     setDraft(key,value){return this.update(s=>({...s,drafts:{...s.drafts,[key]:value}}));}
@@ -101,13 +100,12 @@ function carrotTopAreaCore() {
       const compact=root.createDiv({cls:'cta-compact',attr:{'aria-label':'随手晾晾与专注一刻'}});
       const compactNotes=button(compact,'随手晾晾：打开全部便签',()=>new CarrotStickyUI.Manager(this).open());icon(compactNotes,'sticky-note');const compactNotesText=compactNotes.createSpan();
       const compactFocus=button(compact,'专注一刻：打开计时面板',()=>this.focus.openPanel());icon(compactFocus,'timer');const compactFocusText=compactFocus.createSpan();
-      const homeTools=button(header,'顶部工具：显示与隐藏',()=>this.showVisibilityMenu(homeTools),'cta-home-tools');icon(homeTools,'sliders-horizontal');homeTools.createSpan({cls:'cta-home-tools-label',text:'顶部工具'});homeTools.setAttribute('aria-haspopup','menu');
-      const hideArea=(parent,kind,name,cls,glyph='eye-off')=>{const el=button(parent,'隐藏'+name+'（可从顶部工具恢复）',async()=>{if(el.disabled)return;el.disabled=true;try{await this.setAreaVisible(kind,false);homeTools.focus({preventScroll:true});}finally{el.disabled=!!this.loadError;}},'cta-hide-area '+cls);if(glyph)icon(el,glyph);return el;};
+      const focusMore=()=>view.containerEl?.querySelector('.view-header .view-actions .view-action:last-child')?.focus({preventScroll:true});
+      const hideArea=(parent,kind,name,cls,glyph='eye-off')=>{const el=button(parent,'隐藏'+name+'（可从主页更多选项恢复）',async()=>{if(el.disabled)return;el.disabled=true;try{await this.setAreaVisible(kind,false);focusMore();}finally{el.disabled=!!this.loadError;}},'cta-hide-area '+cls);if(glyph)icon(el,glyph);return el;};
       let disposed=false,raf=0,readToken=0,busy=false,lastTaskPath='',cachedTitle='',adaptiveWidth=null,notesPerPage=2;
       const wire=left.createDiv({cls:'cta-wire'});wire.innerHTML='<svg viewBox="0 0 340 32" preserveAspectRatio="none" fill="none" aria-hidden="true"><path d="M7 7Q170 42 333 7" stroke="currentColor" stroke-width="1.8" vector-effect="non-scaling-stroke"/><path d="M7 7Q170 42 333 7" stroke="var(--cta-rope-highlight)" stroke-width=".5" stroke-dasharray="2 4"/><circle cx="7" cy="7" r="3.5" fill="var(--cta-wood-border)"/></svg>';
-      const hideNotes=hideArea(left,'notes','随手晾晾','cta-hide-notes',null);
-      hideNotes.setAttribute('aria-label','收起随手晾晾区域（不删除便签，可从顶部工具恢复）');hideNotes.title='收起便签区域 · 可从右上角顶部工具恢复';
-      const reel=hideNotes.createSpan({cls:'cta-rope-reel',attr:{'aria-hidden':'true'}});O.setIcon(reel,'chevrons-left');
+      const foldNotes=button(left,'折叠便签（保留晾绳，再点展开）',async()=>{if(foldNotes.disabled)return;foldNotes.disabled=true;try{await this.update(s=>({...s,notesCollapsed:!s.notesCollapsed}));foldNotes.focus({preventScroll:true});}finally{foldNotes.disabled=!!this.loadError;}},'cta-hide-area cta-fold-notes');
+      const reel=foldNotes.createSpan({cls:'cta-rope-reel',attr:{'aria-hidden':'true'}});O.setIcon(reel,'chevrons-left');
       const notesRow=left.createDiv({cls:'cta-note-row'}),noteTools=left.createDiv({cls:'cta-note-tools'});
       const U=CarrotStickyUI,C=carrotStickyNotesCore();
       const add=button(noteTools,'贴一张',()=>new U.Editor(this).open());icon(add,'plus');add.createSpan({text:'贴一张'});
@@ -117,7 +115,7 @@ function carrotTopAreaCore() {
       const next=button(noteTools,'下一组便签',()=>{this.offset+=notesPerPage;this.refresh();});icon(next,'chevron-right');
       const focusMount=this.focus.mount(right);const hideFocus=hideArea(right.querySelector('.cta-focus-head'),'focus','专注一刻','cta-hide-focus');
       const tick=()=>{
-        hideNotes.disabled=hideFocus.disabled=!!this.loadError;
+        foldNotes.disabled=hideFocus.disabled=!!this.loadError;
         focusMount.tick();compactNotesText.textContent=`随手晾晾 · ${this.state.notes.length+this.state.archived.length}`;
         let snapshot;try{snapshot=carrotFocusMomentCore().snapshot(this.focus.state(),this.focus.plugin()?.settings,this.focus.nextDuration);}catch{}
         compactFocusText.textContent='专注一刻'+(snapshot?.time!=null?' · '+core.clock(snapshot.time):'');
@@ -127,6 +125,10 @@ function carrotTopAreaCore() {
       const notes=async()=>{
         if(this.dragging){this.pendingRefresh=true;return;}
         const token=++readToken;dragCleanups.forEach(f=>f());dragCleanups=[];notesRow.empty();
+        const collapsed=this.state.notesCollapsed===true;notesRow.hidden=noteTools.hidden=collapsed;left.toggleClass('is-collapsed',collapsed);
+        foldNotes.setAttribute('aria-expanded',String(!collapsed));const foldLabel=collapsed?'展开便签':'折叠便签（保留晾绳，再点展开）';foldNotes.setAttribute('aria-label',foldLabel);foldNotes.title=foldLabel;
+        O.setIcon(reel,collapsed?'chevrons-down':'chevrons-left');for(const path of wire.querySelectorAll('path'))path.setAttribute('d',collapsed?'M7 7Q170 7 333 7':'M7 7Q170 42 333 7');
+        if(collapsed)return;
         const length=this.state.notes.length,paging=core.notePage(this.state.notes,this.offset,notesPerPage);this.offset=paging.offset;
         prev.disabled=!paging.hasPrevious;next.disabled=!paging.hasNext;page.textContent=`${paging.page}/${paging.pages}`;
         for(const [b,label] of [[prev,notesPerPage===1?'上一张便签':'上一组便签'],[next,notesPerPage===1?'下一张便签':'下一组便签']]){b.setAttribute('aria-label',label);b.title=label;}
@@ -162,12 +164,6 @@ function carrotTopAreaCore() {
             }
           }
           const base=header.getBoundingClientRect(),end=board.getBoundingClientRect();
-          const tools=content.querySelector('.hearth-arrange-zone')?.getBoundingClientRect(),switcher=content.querySelector('.hearth-dash-switcher')?.getBoundingClientRect();
-          const gap=tools&&switcher?tools.left-switcher.right:0,toolWidth=gap>=104?96:32;
-          homeTools.hidden=!!view.arrangeMode;homeTools.toggleClass('is-icon-only',toolWidth===32);
-          Object.assign(homeTools.style,{left:`${(tools&&gap>=40?tools.left-toolWidth-8:bounds.right-toolWidth)-base.left}px`,top:`${(tools&&gap>=40?tools.top:(content.querySelector('.hearth-dash-switcher-zone')?.getBoundingClientRect().bottom??base.top)+4)-base.top}px`,width:`${toolWidth}px`,height:'32px'});
-          homeTools.toggleClass('has-hidden-area',!shown.notes||!shown.focus);
-          homeTools.title=(!shown.notes&&!shown.focus?'两个区域已隐藏；':!shown.notes?'随手晾晾已隐藏；':!shown.focus?'专注一刻已隐藏；':'')+'顶部工具：显示与隐藏';
           const center=[...header.querySelectorAll(':scope > .hearth-title,:scope > .hearth-search-wrap')].map(el=>({...rect(el),kind:'center'}));
           const others=[...content.querySelectorAll('.hearth-card,.hearth-dash-switcher-zone,.hearth-arrange-button,.hearth-home-toolbar')].map(el=>({...rect(el),kind:'protected'}));
           const spaces=core.slots({left:bounds.left,right:bounds.right,top:base.top+6,bottom:end.top-12,obstacles:[...center,...others]}).filter(slot=>shown[slot.kind]);
@@ -175,7 +171,7 @@ function carrotTopAreaCore() {
           for(const slot of spaces){
             const panel=slot.kind==='notes'?left:right,mode=core.density(slot.width,slot.height),height=Math.min(slot.height,mode==='mini'?160:mode==='small'?176:190);
             panel.hidden=false;panel.dataset.density=mode;panel.style.setProperty('--cta-ui-scale',String(Math.max(.82,Math.min(1,slot.width/(slot.kind==='notes'?340:310)))));
-            Object.assign(panel.style,{left:`${slot.left-base.left}px`,top:`${slot.top-base.top}px`,width:`${slot.width}px`,height:`${height}px`});
+            Object.assign(panel.style,{left:`${slot.left-base.left}px`,top:`${slot.top-base.top}px`,width:`${slot.width}px`,height:`${slot.kind==='notes'&&this.state.notesCollapsed?28:height}px`});
             if(slot.kind==='notes'){const size=mode==='mini'?1:2;if(size!==notesPerPage){notesPerPage=size;notes();}}
           }
           root.dataset.available=spaces.map(x=>x.kind).join(',');
@@ -186,7 +182,7 @@ function carrotTopAreaCore() {
             const visibleCenter=center.filter(r=>r.right>r.left&&r.bottom>r.top);
             const limit=visibleCenter.length?Math.min(...visibleCenter.map(r=>r.top))-4:base.top;
             compact.hidden=limit-anchor<26||bounds.width<270;
-            if(!compact.hidden){const width=Math.min(Math.max(0,bounds.width-80),320);Object.assign(compact.style,{left:`${bounds.left-base.left+(bounds.width-width)/2}px`,top:`${anchor-base.top}px`,width:`${width}px`,height:'26px'});root.dataset.available+=(root.dataset.available?',':'')+'compact';}
+            if(!compact.hidden){const width=Math.min(bounds.width,320);Object.assign(compact.style,{left:`${bounds.left-base.left+(bounds.width-width)/2}px`,top:`${anchor-base.top}px`,width:`${width}px`,height:'26px'});root.dataset.available+=(root.dataset.available?',':'')+'compact';}
           }
         }
       };
@@ -195,14 +191,16 @@ function carrotTopAreaCore() {
       const layoutRef=this.plugin.app.workspace.on('layout-change',place),activeRef=this.plugin.app.workspace.on('active-leaf-change',()=>{place();tick();});
       window.addEventListener('resize',place);
       const interval=window.setInterval(()=>{if(root.isConnected)tick();},1000);
-      const cleanup=()=>{if(disposed)return;disposed=true;readToken++;cancelAnimationFrame(raf);observer.disconnect();clearInterval(interval);this.plugin.app.workspace.offref(layoutRef);this.plugin.app.workspace.offref(activeRef);window.removeEventListener('resize',place);dragCleanups.forEach(f=>f());focusMount.cleanup();this.mounts.delete(mounted);header.removeClass('cta-adaptive-center');header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-title-fit');root.remove();homeTools.remove();};
+      const cleanup=()=>{if(disposed)return;disposed=true;readToken++;cancelAnimationFrame(raf);observer.disconnect();clearInterval(interval);this.plugin.app.workspace.offref(layoutRef);this.plugin.app.workspace.offref(activeRef);window.removeEventListener('resize',place);dragCleanups.forEach(f=>f());focusMount.cleanup();this.mounts.delete(mounted);header.removeClass('cta-adaptive-center');header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-title-fit');root.remove();};
       mounted.cleanup=cleanup;view.renderChild?.register(cleanup);
     }
     remount(){for(const m of [...this.mounts])m.cleanup();for(const leaf of this.plugin.app.workspace.getLeavesOfType('carrot-home-view'))this.mount(leaf.view);}
-    destroy(){this.visibilityMenu?.hide();this.dragAbort?.();for(const m of [...this.mounts])m.cleanup();this.listeners.clear();}
+    destroy(){this.dragAbort?.();for(const m of [...this.mounts])m.cleanup();this.listeners.clear();}
   }
   const previousRender=En.prototype.render;
   En.prototype.render=function(...args){const result=previousRender.apply(this,args);this.plugin.topArea?.mount(this);return result;};
+  const previousPaneMenu=En.prototype.onPaneMenu;
+  En.prototype.onPaneMenu=function(menu,...args){const result=previousPaneMenu?.call(this,menu,...args);this.plugin.topArea?.appendVisibilityMenu(menu);return result;};
   const previousLoad=bs.prototype.onload;
   bs.prototype.onload=async function(){
     this.topArea=new TopArea(this);await this.topArea.load();const result=await previousLoad.call(this);

@@ -14196,18 +14196,15 @@ body.hearth-dv-resizing {
 .hearth-settings .cta-settings-hint {color:var(--text-muted);font-size:var(--font-ui-small);line-height:1.65;margin-top:20px;}
 .hearth-settings .cta-settings-error {color:var(--text-error);font-size:var(--font-ui-small);line-height:1.65;}
 
-/* Direct homepage visibility controls; absolute placement preserves the existing toolbar. */
-.hearth-view button.cta-home-tools {position:absolute;z-index:4;pointer-events:auto;box-sizing:border-box;white-space:nowrap;border:1px solid var(--background-modifier-border);border-radius:8px;background:var(--background-primary);font-size:11px;gap:5px;}
-.hearth-view button.cta-home-tools.is-icon-only .cta-home-tools-label {display:none;}
-.hearth-view button.cta-home-tools.has-hidden-area {color:var(--interactive-accent);border-color:var(--interactive-accent);}
+/* Existing page menu owns visibility; only contextual card controls are visible. */
 .hearth-view button.cta-hide-area {width:24px;height:24px;min-height:24px;padding:4px;flex:none;border-radius:5px;color:var(--text-muted);}
 .hearth-view .cta-hide-area .cta-icon svg {width:13px;height:13px;}
 /* A small reel sits on the right anchor of the clothesline. */
-.hearth-view button.cta-hide-notes {position:absolute;right:calc(2.058824% - 14px);top:-8px;width:28px;height:28px;min-height:28px;padding:4.5px;border-radius:50%;z-index:1;background:transparent;color:var(--cta-rope-color);}
-.hearth-view button.cta-hide-notes:hover {background:transparent;color:var(--cta-rope-color);}
+.hearth-view button.cta-fold-notes {position:absolute;right:calc(2.058824% - 14px);top:-8px;width:28px;height:28px;min-height:28px;padding:4.5px;border-radius:50%;z-index:1;background:transparent;color:var(--cta-rope-color);}
+.hearth-view button.cta-fold-notes:hover {background:transparent;color:var(--cta-rope-color);}
 .hearth-view .cta-rope-reel {width:19px;height:19px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:none;border:1px solid var(--cta-wood-border);border-radius:5px;background:var(--cta-paper);color:var(--cta-wood-ink);transition:background .12s ease;}
 .hearth-view .cta-rope-reel svg {width:12px;height:12px;stroke-width:1.7;}
-.hearth-view button.cta-hide-notes:hover .cta-rope-reel,.hearth-view button.cta-hide-notes:focus-visible .cta-rope-reel {background:color-mix(in srgb,var(--cta-wood-border) 15%,var(--cta-paper));}
+.hearth-view button.cta-fold-notes:hover .cta-rope-reel,.hearth-view button.cta-fold-notes:focus-visible .cta-rope-reel {background:color-mix(in srgb,var(--cta-wood-border) 15%,var(--cta-paper));}
 @media (prefers-reduced-motion:reduce) {.hearth-view .cta-rope-reel {transition:none;}}
 .hearth-view .cta-focus-head .cfm-phase {min-width:0;flex:1;text-align:right;}
 .hearth-view .cta-focus-head button.cta-hide-focus {margin:-5px -5px -5px 0;}
