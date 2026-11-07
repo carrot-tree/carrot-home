@@ -7,13 +7,13 @@ Carrot Home 2.1.2 将左侧便签改为真正沿绳子向左收拢，收好后�
 
 ### 展开状态
 
-![展开：木夹、细麻绳和便签](https://github.com/carrot-tree/carrot-home/releases/download/2.1.2/sticky-notes-expanded.png)
+![展开：木夹、细麻绳和便签](https://raw.githubusercontent.com/carrot-tree/carrot-home/2.1.2/docs/images/sticky-notes-expanded.png)
 
 ### 向左收起
 
 左端只留固定钉与单圈短绳；点击绳圈向右展开。
 
-![收起：点击左侧单圈展开](https://github.com/carrot-tree/carrot-home/releases/download/2.1.2/sticky-notes-folded.png)
+![收起：点击左侧单圈展开](https://raw.githubusercontent.com/carrot-tree/carrot-home/2.1.2/docs/images/sticky-notes-folded.png)
 
 图片为独立桌面预览库的真实界面，使用虚构示例内容。
 
