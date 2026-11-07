@@ -20,8 +20,9 @@ function carrotTopAreaCore() {
     size=size===1?1:2;offset=Math.max(0,Math.min(Math.floor(offset/size)*size,Math.floor(Math.max(0,paths.length-1)/size)*size));
     return {offset,paths:paths.slice(offset,offset+size),page:Math.floor(offset/size)+1,pages:Math.max(1,Math.ceil(paths.length/size)),hasPrevious:offset>0,hasNext:offset+size<paths.length};
   }
+  const visibility = state => ({notes:state.enabled!==false&&state.notesEnabled!==false,focus:state.enabled!==false&&state.focusEnabled!==false});
   const clock = seconds => {const n=Math.max(0,Math.ceil(Number(seconds)||0));return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;};
-  return {defaultState,safePath,normalize,note,slots,clock,centerWidth,density,notePage};
+  return {defaultState,safePath,normalize,note,slots,clock,centerWidth,density,notePage,visibility};
 }
 
 ;(() => {
@@ -36,6 +37,18 @@ function carrotTopAreaCore() {
     get loadError(){return this.store.error;}
     async load(){await this.store.load();}
     async update(next){const result=await this.store.update(next);this.refresh();return result;}
+    async setAreaVisible(kind,visible){
+      const flag={notes:'notesEnabled',focus:'focusEnabled'}[kind];if(!flag)throw new Error('未知顶部区域');
+      return this.update(state=>({...state,[flag]:visible,...(visible?{enabled:true}:{})}));
+    }
+    showVisibilityMenu(anchor){
+      this.visibilityMenu?.hide();const menu=new O.Menu();this.visibilityMenu=menu;menu.setUseNativeMenu?.(false);const shown=core.visibility(this.state),run=action=>()=>Promise.resolve().then(action).catch(e=>new O.Notice('显示设置未保存：'+e.message));
+      menu.addItem(item=>item.setTitle('显示顶部工具').setChecked(this.state.enabled!==false).setDisabled(!!this.loadError).onClick(run(()=>this.update(s=>({...s,enabled:s.enabled===false})))));
+      menu.addSeparator();
+      for(const [kind,name] of [['notes','随手晾晾'],['focus','专注一刻']])menu.addItem(item=>item.setTitle('显示'+name).setChecked(shown[kind]).setDisabled(!!this.loadError).onClick(run(()=>this.setAreaVisible(kind,!shown[kind]))));
+      menu.addSeparator();menu.addItem(item=>item.setTitle('更多顶部工具设置…').setIcon('settings').onClick(()=>this.plugin.app.commands.executeCommandById('carrot-home:top-tools-settings')));
+      const r=anchor.getBoundingClientRect();menu.showAtPosition({x:r.left,y:r.bottom+4});
+    }
     subscribe(fn){this.listeners.add(fn);return ()=>this.listeners.delete(fn);}
     setDraft(key,value){return this.update(s=>({...s,drafts:{...s.drafts,[key]:value}}));}
     clearDraft(key){return this.update(s=>{const drafts={...s.drafts};delete drafts[key];return {...s,drafts};});}
@@ -88,8 +101,13 @@ function carrotTopAreaCore() {
       const compact=root.createDiv({cls:'cta-compact',attr:{'aria-label':'随手晾晾与专注一刻'}});
       const compactNotes=button(compact,'随手晾晾：打开全部便签',()=>new CarrotStickyUI.Manager(this).open());icon(compactNotes,'sticky-note');const compactNotesText=compactNotes.createSpan();
       const compactFocus=button(compact,'专注一刻：打开计时面板',()=>this.focus.openPanel());icon(compactFocus,'timer');const compactFocusText=compactFocus.createSpan();
+      const homeTools=button(header,'顶部工具：显示与隐藏',()=>this.showVisibilityMenu(homeTools),'cta-home-tools');icon(homeTools,'sliders-horizontal');homeTools.createSpan({cls:'cta-home-tools-label',text:'顶部工具'});homeTools.setAttribute('aria-haspopup','menu');
+      const hideArea=(parent,kind,name,cls,glyph='eye-off')=>{const el=button(parent,'隐藏'+name+'（可从顶部工具恢复）',async()=>{if(el.disabled)return;el.disabled=true;try{await this.setAreaVisible(kind,false);homeTools.focus({preventScroll:true});}finally{el.disabled=!!this.loadError;}},'cta-hide-area '+cls);if(glyph)icon(el,glyph);return el;};
       let disposed=false,raf=0,readToken=0,busy=false,lastTaskPath='',cachedTitle='',adaptiveWidth=null,notesPerPage=2;
-      const wire=left.createDiv({cls:'cta-wire'});wire.innerHTML='<svg viewBox="0 0 340 32" fill="none" aria-hidden="true"><path d="M7 7Q170 40 333 7" stroke="currentColor" stroke-width="1.2"/><circle cx="7" cy="7" r="3" fill="currentColor"/><circle cx="333" cy="7" r="3" fill="currentColor"/></svg>';
+      const wire=left.createDiv({cls:'cta-wire'});wire.innerHTML='<svg viewBox="0 0 340 32" preserveAspectRatio="none" fill="none" aria-hidden="true"><path d="M7 7Q170 42 333 7" stroke="currentColor" stroke-width="1.8" vector-effect="non-scaling-stroke"/><path d="M7 7Q170 42 333 7" stroke="var(--cta-rope-highlight)" stroke-width=".5" stroke-dasharray="2 4"/><circle cx="7" cy="7" r="3.5" fill="var(--cta-wood-border)"/></svg>';
+      const hideNotes=hideArea(left,'notes','随手晾晾','cta-hide-notes',null);
+      hideNotes.setAttribute('aria-label','收起随手晾晾区域（不删除便签，可从顶部工具恢复）');hideNotes.title='收起便签区域 · 可从右上角顶部工具恢复';
+      const reel=hideNotes.createSpan({cls:'cta-rope-reel',attr:{'aria-hidden':'true'}});O.setIcon(reel,'chevrons-left');
       const notesRow=left.createDiv({cls:'cta-note-row'}),noteTools=left.createDiv({cls:'cta-note-tools'});
       const U=CarrotStickyUI,C=carrotStickyNotesCore();
       const add=button(noteTools,'贴一张',()=>new U.Editor(this).open());icon(add,'plus');add.createSpan({text:'贴一张'});
@@ -97,7 +115,9 @@ function carrotTopAreaCore() {
       const prev=button(noteTools,'上一组便签',()=>{this.offset=Math.max(0,this.offset-notesPerPage);this.refresh();});icon(prev,'chevron-left');
       const page=noteTools.createSpan({cls:'csn-top-page'});
       const next=button(noteTools,'下一组便签',()=>{this.offset+=notesPerPage;this.refresh();});icon(next,'chevron-right');
-      const focusMount=this.focus.mount(right),tick=()=>{
+      const focusMount=this.focus.mount(right);const hideFocus=hideArea(right.querySelector('.cta-focus-head'),'focus','专注一刻','cta-hide-focus');
+      const tick=()=>{
+        hideNotes.disabled=hideFocus.disabled=!!this.loadError;
         focusMount.tick();compactNotesText.textContent=`随手晾晾 · ${this.state.notes.length+this.state.archived.length}`;
         let snapshot;try{snapshot=carrotFocusMomentCore().snapshot(this.focus.state(),this.focus.plugin()?.settings,this.focus.nextDuration);}catch{}
         compactFocusText.textContent='专注一刻'+(snapshot?.time!=null?' · '+core.clock(snapshot.time):'');
@@ -114,7 +134,7 @@ function carrotTopAreaCore() {
         for(let i=0;i<notesPerPage;i++){
           const path=paths[i],card=notesRow.createDiv({cls:`cta-note cta-note-${i}`,attr:path?{'data-note-path':path}:undefined});
           if(!path){const empty=button(card,'贴一张便签',()=>new U.Editor(this).open(),'cta-empty');icon(empty,i?'sticky-note':'plus');empty.createSpan({text:i?'备忘、摘录\n都可以晾在这里':'贴一张，要记住的事'});continue;}
-          if(notesPerPage>1){const handle=button(card,'拖动纸夹排序',()=>{},'csn-note-drag');handle.createSpan({cls:'cta-clip',attr:{'aria-hidden':'true'}});U.bindDrag(this,handle,path,notesRow,'horizontal',f=>dragCleanups.push(f));}
+          if(notesPerPage>1){const handle=button(card,'拖动木夹排序',()=>{},'csn-note-drag');handle.createSpan({cls:'cta-clip',attr:{'aria-hidden':'true'}});U.bindDrag(this,handle,path,notesRow,'horizontal',f=>dragCleanups.push(f));}
           else card.createSpan({cls:'csn-mini-clip',attr:{'aria-hidden':'true'}}).createSpan({cls:'cta-clip'});
           const title=button(card,'改一改便签',()=>new U.Editor(this,path).open(),'cta-note-title');title.textContent='便签';
           const body=button(card,'改一改便签正文',()=>new U.Editor(this,path).open(),'cta-note-excerpt');
@@ -129,7 +149,7 @@ function carrotTopAreaCore() {
       const place=()=>{
         if(disposed)return;{
           if(this.dragging){this.pendingRefresh=true;return;}
-          root.hidden=!this.state.enabled||view.arrangeMode;
+          const shown=core.visibility(this.state);root.hidden=(!shown.notes&&!shown.focus)||view.arrangeMode;
           const bounds=inner.getBoundingClientRect();
           const desiredWidth=root.hidden?null:core.centerWidth(bounds.width);
           if(desiredWidth!==adaptiveWidth){
@@ -142,9 +162,15 @@ function carrotTopAreaCore() {
             }
           }
           const base=header.getBoundingClientRect(),end=board.getBoundingClientRect();
+          const tools=content.querySelector('.hearth-arrange-zone')?.getBoundingClientRect(),switcher=content.querySelector('.hearth-dash-switcher')?.getBoundingClientRect();
+          const gap=tools&&switcher?tools.left-switcher.right:0,toolWidth=gap>=104?96:32;
+          homeTools.hidden=!!view.arrangeMode;homeTools.toggleClass('is-icon-only',toolWidth===32);
+          Object.assign(homeTools.style,{left:`${(tools&&gap>=40?tools.left-toolWidth-8:bounds.right-toolWidth)-base.left}px`,top:`${(tools&&gap>=40?tools.top:(content.querySelector('.hearth-dash-switcher-zone')?.getBoundingClientRect().bottom??base.top)+4)-base.top}px`,width:`${toolWidth}px`,height:'32px'});
+          homeTools.toggleClass('has-hidden-area',!shown.notes||!shown.focus);
+          homeTools.title=(!shown.notes&&!shown.focus?'两个区域已隐藏；':!shown.notes?'随手晾晾已隐藏；':!shown.focus?'专注一刻已隐藏；':'')+'顶部工具：显示与隐藏';
           const center=[...header.querySelectorAll(':scope > .hearth-title,:scope > .hearth-search-wrap')].map(el=>({...rect(el),kind:'center'}));
           const others=[...content.querySelectorAll('.hearth-card,.hearth-dash-switcher-zone,.hearth-arrange-button,.hearth-home-toolbar')].map(el=>({...rect(el),kind:'protected'}));
-          const spaces=core.slots({left:bounds.left,right:bounds.right,top:base.top+6,bottom:end.top-12,obstacles:[...center,...others]});
+          const spaces=core.slots({left:bounds.left,right:bounds.right,top:base.top+6,bottom:end.top-12,obstacles:[...center,...others]}).filter(slot=>shown[slot.kind]);
           left.hidden=true;right.hidden=true;
           for(const slot of spaces){
             const panel=slot.kind==='notes'?left:right,mode=core.density(slot.width,slot.height),height=Math.min(slot.height,mode==='mini'?160:mode==='small'?176:190);
@@ -153,14 +179,14 @@ function carrotTopAreaCore() {
             if(slot.kind==='notes'){const size=mode==='mini'?1:2;if(size!==notesPerPage){notesPerPage=size;notes();}}
           }
           root.dataset.available=spaces.map(x=>x.kind).join(',');
-          compactNotes.hidden=!left.hidden;compactFocus.hidden=!right.hidden;compact.hidden=(!left.hidden&&!right.hidden)||root.hidden;
+          compactNotes.hidden=!shown.notes||!left.hidden;compactFocus.hidden=!shown.focus||!right.hidden;compact.hidden=(compactNotes.hidden&&compactFocus.hidden)||root.hidden;
           if(!compact.hidden){
             const nav=content.querySelector('.hearth-dash-switcher-zone')?.getBoundingClientRect();
             const anchor=nav?.height?nav.bottom+4:base.top;
             const visibleCenter=center.filter(r=>r.right>r.left&&r.bottom>r.top);
             const limit=visibleCenter.length?Math.min(...visibleCenter.map(r=>r.top))-4:base.top;
             compact.hidden=limit-anchor<26||bounds.width<270;
-            if(!compact.hidden){const width=Math.min(bounds.width,320);Object.assign(compact.style,{left:`${bounds.left-base.left+(bounds.width-width)/2}px`,top:`${anchor-base.top}px`,width:`${width}px`,height:'26px'});root.dataset.available+=(root.dataset.available?',':'')+'compact';}
+            if(!compact.hidden){const width=Math.min(Math.max(0,bounds.width-80),320);Object.assign(compact.style,{left:`${bounds.left-base.left+(bounds.width-width)/2}px`,top:`${anchor-base.top}px`,width:`${width}px`,height:'26px'});root.dataset.available+=(root.dataset.available?',':'')+'compact';}
           }
         }
       };
@@ -169,11 +195,11 @@ function carrotTopAreaCore() {
       const layoutRef=this.plugin.app.workspace.on('layout-change',place),activeRef=this.plugin.app.workspace.on('active-leaf-change',()=>{place();tick();});
       window.addEventListener('resize',place);
       const interval=window.setInterval(()=>{if(root.isConnected)tick();},1000);
-      const cleanup=()=>{if(disposed)return;disposed=true;readToken++;cancelAnimationFrame(raf);observer.disconnect();clearInterval(interval);this.plugin.app.workspace.offref(layoutRef);this.plugin.app.workspace.offref(activeRef);window.removeEventListener('resize',place);dragCleanups.forEach(f=>f());focusMount.cleanup();this.mounts.delete(mounted);header.removeClass('cta-adaptive-center');header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-title-fit');root.remove();};
+      const cleanup=()=>{if(disposed)return;disposed=true;readToken++;cancelAnimationFrame(raf);observer.disconnect();clearInterval(interval);this.plugin.app.workspace.offref(layoutRef);this.plugin.app.workspace.offref(activeRef);window.removeEventListener('resize',place);dragCleanups.forEach(f=>f());focusMount.cleanup();this.mounts.delete(mounted);header.removeClass('cta-adaptive-center');header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-title-fit');root.remove();homeTools.remove();};
       mounted.cleanup=cleanup;view.renderChild?.register(cleanup);
     }
     remount(){for(const m of [...this.mounts])m.cleanup();for(const leaf of this.plugin.app.workspace.getLeavesOfType('carrot-home-view'))this.mount(leaf.view);}
-    destroy(){this.dragAbort?.();for(const m of [...this.mounts])m.cleanup();this.listeners.clear();}
+    destroy(){this.visibilityMenu?.hide();this.dragAbort?.();for(const m of [...this.mounts])m.cleanup();this.listeners.clear();}
   }
   const previousRender=En.prototype.render;
   En.prototype.render=function(...args){const result=previousRender.apply(this,args);this.plugin.topArea?.mount(this);return result;};
@@ -184,6 +210,7 @@ function carrotTopAreaCore() {
     this.addCommand({id:'capture-top-inspiration',name:'随手晾晾：贴一张',callback:()=>new CarrotStickyUI.Editor(this.topArea).open()});
     this.addCommand({id:'toggle-top-tools',name:'顶部工具：显示／隐藏',callback:()=>this.topArea.update(state=>({...state,enabled:!state.enabled})).catch(e=>new O.Notice(e.message))});
     this.addCommand({id:'sticky-notes-all',name:'随手晾晾：全部便签',callback:()=>new CarrotStickyUI.Manager(this.topArea).open()});
+    this.addCommand({id:'top-tools-settings',name:'顶部工具：打开设置',callback:()=>{this.app.saveLocalStorage('hearth-settings-tab','top-tools');this.app.setting.open();this.app.setting.openTabById('carrot-home');}});
     this.addCommand({id:'focus-moment-open',name:'专注一刻：打开',callback:()=>this.topArea.focus.openPanel()});
     this.app.workspace.onLayoutReady(()=>this.topArea.remount());return result;
   };

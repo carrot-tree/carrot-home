@@ -20,11 +20,13 @@ Carrot Home 基于 [ondreu/Hearth](https://github.com/ondreu/Hearth) 定制，�
 - **在主页管理一轮专注**：“专注一刻”同步真实 TaskNotes 会话，支持选择任务、暂停、继续、安全结束与休息。
 - **一起查看任务和项目进度**：通过独立的 Carrot Gantt 插件，在首页中查看项目时间轴和关联任务。
 
-## 顶部工具（开发版）
+## 顶部工具
 
 “随手晾晾”和“专注一刻”使用标题两侧的空间，三栏随主页实际宽度一起收缩。较窄时会调整字号、间距和卡片高度，便签改为单张翻页；空间进一步不足时显示紧凑入口。原导航与六张卡片的位置保持。
 
-便签为真实 Markdown，排序、收起、草稿和专注选择使用独立 `top-area.json`，升级时保留已有文件。功能、数据兼容与桌面验证范围见 [顶部工具说明](docs/top-area.md)。这些改动尚未随新的 Release 发布。
+便签为真实 Markdown，排序、收起、草稿和专注选择使用独立 `top-area.json`，升级时保留已有文件。功能、数据兼容与桌面验证范围见 [顶部工具说明](docs/top-area.md)。已随 2.1.0 发布。
+
+左侧便签已采用 B“木夹晾晒”风格。主页提供隐藏按钮，右上角“顶部工具”菜单可恢复显示。统一设置入口：**设置 → Carrot Home → 顶部工具**，可独立开关两个区域并进入便签、计时管理。
 
 ## 效果展示
 
@@ -58,7 +60,7 @@ Carrot Home 基于 [ondreu/Hearth](https://github.com/ondreu/Hearth) 定制，�
 3. 选择跟踪最新版本，添加后在社区插件列表启用 **Carrot Home**。
 4. 从左侧功能区或命令面板打开 **Carrot Home**。
 
-当前发布版本为 [2.0.5](https://github.com/carrot-tree/carrot-home/releases/tag/2.0.5)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
+当前发布版本为 [2.1.0](https://github.com/carrot-tree/carrot-home/releases/tag/2.1.0)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
 
 ### 按需安装配套插件
 

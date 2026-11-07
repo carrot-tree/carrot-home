@@ -39,7 +39,7 @@ var CarrotStickyUI=(()=>{
   }
   /* Pointer drag works in Electron without native HTML5 drag ghosts. */
   function bindDrag(owner,handle,source,container,kind,cleanupRegister){
-    handle.setAttribute('aria-label','拖动便签调整顺序；Alt 加方向键也可移动');handle.title='拖动纸夹调顺序 · Alt+方向键移动';
+    handle.setAttribute('aria-label','拖动便签调整顺序；Alt 加方向键也可移动');handle.title=(kind==='horizontal'?'拖动木夹':'拖动手柄')+'调顺序 · Alt+方向键移动';
     let session=null;
     const clearMarks=()=>container.querySelectorAll('.csn-drop-before,.csn-drop-after,.csn-lifted').forEach(el=>el.classList.remove('csn-drop-before','csn-drop-after','csn-lifted'));
     const finish=(commit=false)=>{

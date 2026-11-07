@@ -1,7 +1,7 @@
 /* Pure note semantics and a single-writer, compare-before-rename sidecar store. */
 function carrotStickyNotesCore() {
   const safePath=p=>typeof p==='string'&&p.endsWith('.md')&&!p.startsWith('/')&&!p.startsWith('.')&&!p.includes('\\')&&!p.split('/').some(x=>!x||x==='..'||x==='.')&&!/[\u0000-\u001f]/.test(p);
-  const defaults=()=>({version:2,enabled:true,notes:[],archived:[],drafts:{},focusPath:''});
+  const defaults=()=>({version:2,enabled:true,notesEnabled:true,focusEnabled:true,notes:[],archived:[],drafts:{},focusPath:''});
   function normalize(input){
     if(!input||![1,2].includes(input.version)||!Array.isArray(input.notes))throw new Error('便签存储版本或格式无法读取；原文件已保留');
     const list=value=>{if(!Array.isArray(value)||value.some(p=>!safePath(p)))throw new Error('便签索引包含无效路径；原文件已保留');return [...new Set(value)];};
@@ -9,7 +9,7 @@ function carrotStickyNotesCore() {
     const drafts=input.drafts||{};
     if(!drafts||typeof drafts!=='object'||Array.isArray(drafts)||Object.entries(drafts).some(([k,v])=>(k!=='new'&&!safePath(k))||!v||typeof v.title!=='string'||typeof v.body!=='string'||(v.baseText!=null&&typeof v.baseText!=='string')))throw new Error('便签草稿格式无法读取；原文件已保留');
     if(input.focusPath&& !safePath(input.focusPath))throw new Error('专注任务路径格式无效；原文件已保留');
-    return {...input,version:2,enabled:input.enabled!==false,notes,archived,drafts,focusPath:input.focusPath||''};
+    return {...input,version:2,enabled:input.enabled!==false,notesEnabled:input.notesEnabled!==false,focusEnabled:input.focusEnabled!==false,notes,archived,drafts,focusPath:input.focusPath||''};
   }
   function split(raw){
     raw=String(raw);const start='<!-- carrot-sticky:start -->',end='<!-- carrot-sticky:end -->';

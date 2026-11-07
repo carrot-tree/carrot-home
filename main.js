@@ -2811,7 +2811,7 @@ function carrotTaskFocus() {
 /* Pure note semantics and a single-writer, compare-before-rename sidecar store. */
 function carrotStickyNotesCore() {
   const safePath=p=>typeof p==='string'&&p.endsWith('.md')&&!p.startsWith('/')&&!p.startsWith('.')&&!p.includes('\\')&&!p.split('/').some(x=>!x||x==='..'||x==='.')&&!/[\u0000-\u001f]/.test(p);
-  const defaults=()=>({version:2,enabled:true,notes:[],archived:[],drafts:{},focusPath:''});
+  const defaults=()=>({version:2,enabled:true,notesEnabled:true,focusEnabled:true,notes:[],archived:[],drafts:{},focusPath:''});
   function normalize(input){
     if(!input||![1,2].includes(input.version)||!Array.isArray(input.notes))throw new Error('便签存储版本或格式无法读取；原文件已保留');
     const list=value=>{if(!Array.isArray(value)||value.some(p=>!safePath(p)))throw new Error('便签索引包含无效路径；原文件已保留');return [...new Set(value)];};
@@ -2819,7 +2819,7 @@ function carrotStickyNotesCore() {
     const drafts=input.drafts||{};
     if(!drafts||typeof drafts!=='object'||Array.isArray(drafts)||Object.entries(drafts).some(([k,v])=>(k!=='new'&&!safePath(k))||!v||typeof v.title!=='string'||typeof v.body!=='string'||(v.baseText!=null&&typeof v.baseText!=='string')))throw new Error('便签草稿格式无法读取；原文件已保留');
     if(input.focusPath&& !safePath(input.focusPath))throw new Error('专注任务路径格式无效；原文件已保留');
-    return {...input,version:2,enabled:input.enabled!==false,notes,archived,drafts,focusPath:input.focusPath||''};
+    return {...input,version:2,enabled:input.enabled!==false,notesEnabled:input.notesEnabled!==false,focusEnabled:input.focusEnabled!==false,notes,archived,drafts,focusPath:input.focusPath||''};
   }
   function split(raw){
     raw=String(raw);const start='<!-- carrot-sticky:start -->',end='<!-- carrot-sticky:end -->';
@@ -2917,7 +2917,7 @@ var CarrotStickyUI=(()=>{
   }
   /* Pointer drag works in Electron without native HTML5 drag ghosts. */
   function bindDrag(owner,handle,source,container,kind,cleanupRegister){
-    handle.setAttribute('aria-label','拖动便签调整顺序；Alt 加方向键也可移动');handle.title='拖动纸夹调顺序 · Alt+方向键移动';
+    handle.setAttribute('aria-label','拖动便签调整顺序；Alt 加方向键也可移动');handle.title=(kind==='horizontal'?'拖动木夹':'拖动手柄')+'调顺序 · Alt+方向键移动';
     let session=null;
     const clearMarks=()=>container.querySelectorAll('.csn-drop-before,.csn-drop-after,.csn-lifted').forEach(el=>el.classList.remove('csn-drop-before','csn-drop-after','csn-lifted'));
     const finish=(commit=false)=>{
@@ -3167,8 +3167,9 @@ function carrotTopAreaCore() {
     size=size===1?1:2;offset=Math.max(0,Math.min(Math.floor(offset/size)*size,Math.floor(Math.max(0,paths.length-1)/size)*size));
     return {offset,paths:paths.slice(offset,offset+size),page:Math.floor(offset/size)+1,pages:Math.max(1,Math.ceil(paths.length/size)),hasPrevious:offset>0,hasNext:offset+size<paths.length};
   }
+  const visibility = state => ({notes:state.enabled!==false&&state.notesEnabled!==false,focus:state.enabled!==false&&state.focusEnabled!==false});
   const clock = seconds => {const n=Math.max(0,Math.ceil(Number(seconds)||0));return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;};
-  return {defaultState,safePath,normalize,note,slots,clock,centerWidth,density,notePage};
+  return {defaultState,safePath,normalize,note,slots,clock,centerWidth,density,notePage,visibility};
 }
 
 ;(() => {
@@ -3183,6 +3184,18 @@ function carrotTopAreaCore() {
     get loadError(){return this.store.error;}
     async load(){await this.store.load();}
     async update(next){const result=await this.store.update(next);this.refresh();return result;}
+    async setAreaVisible(kind,visible){
+      const flag={notes:'notesEnabled',focus:'focusEnabled'}[kind];if(!flag)throw new Error('未知顶部区域');
+      return this.update(state=>({...state,[flag]:visible,...(visible?{enabled:true}:{})}));
+    }
+    showVisibilityMenu(anchor){
+      this.visibilityMenu?.hide();const menu=new O.Menu();this.visibilityMenu=menu;menu.setUseNativeMenu?.(false);const shown=core.visibility(this.state),run=action=>()=>Promise.resolve().then(action).catch(e=>new O.Notice('显示设置未保存：'+e.message));
+      menu.addItem(item=>item.setTitle('显示顶部工具').setChecked(this.state.enabled!==false).setDisabled(!!this.loadError).onClick(run(()=>this.update(s=>({...s,enabled:s.enabled===false})))));
+      menu.addSeparator();
+      for(const [kind,name] of [['notes','随手晾晾'],['focus','专注一刻']])menu.addItem(item=>item.setTitle('显示'+name).setChecked(shown[kind]).setDisabled(!!this.loadError).onClick(run(()=>this.setAreaVisible(kind,!shown[kind]))));
+      menu.addSeparator();menu.addItem(item=>item.setTitle('更多顶部工具设置…').setIcon('settings').onClick(()=>this.plugin.app.commands.executeCommandById('carrot-home:top-tools-settings')));
+      const r=anchor.getBoundingClientRect();menu.showAtPosition({x:r.left,y:r.bottom+4});
+    }
     subscribe(fn){this.listeners.add(fn);return ()=>this.listeners.delete(fn);}
     setDraft(key,value){return this.update(s=>({...s,drafts:{...s.drafts,[key]:value}}));}
     clearDraft(key){return this.update(s=>{const drafts={...s.drafts};delete drafts[key];return {...s,drafts};});}
@@ -3235,8 +3248,13 @@ function carrotTopAreaCore() {
       const compact=root.createDiv({cls:'cta-compact',attr:{'aria-label':'随手晾晾与专注一刻'}});
       const compactNotes=button(compact,'随手晾晾：打开全部便签',()=>new CarrotStickyUI.Manager(this).open());icon(compactNotes,'sticky-note');const compactNotesText=compactNotes.createSpan();
       const compactFocus=button(compact,'专注一刻：打开计时面板',()=>this.focus.openPanel());icon(compactFocus,'timer');const compactFocusText=compactFocus.createSpan();
+      const homeTools=button(header,'顶部工具：显示与隐藏',()=>this.showVisibilityMenu(homeTools),'cta-home-tools');icon(homeTools,'sliders-horizontal');homeTools.createSpan({cls:'cta-home-tools-label',text:'顶部工具'});homeTools.setAttribute('aria-haspopup','menu');
+      const hideArea=(parent,kind,name,cls,glyph='eye-off')=>{const el=button(parent,'隐藏'+name+'（可从顶部工具恢复）',async()=>{if(el.disabled)return;el.disabled=true;try{await this.setAreaVisible(kind,false);homeTools.focus({preventScroll:true});}finally{el.disabled=!!this.loadError;}},'cta-hide-area '+cls);if(glyph)icon(el,glyph);return el;};
       let disposed=false,raf=0,readToken=0,busy=false,lastTaskPath='',cachedTitle='',adaptiveWidth=null,notesPerPage=2;
-      const wire=left.createDiv({cls:'cta-wire'});wire.innerHTML='<svg viewBox="0 0 340 32" fill="none" aria-hidden="true"><path d="M7 7Q170 40 333 7" stroke="currentColor" stroke-width="1.2"/><circle cx="7" cy="7" r="3" fill="currentColor"/><circle cx="333" cy="7" r="3" fill="currentColor"/></svg>';
+      const wire=left.createDiv({cls:'cta-wire'});wire.innerHTML='<svg viewBox="0 0 340 32" preserveAspectRatio="none" fill="none" aria-hidden="true"><path d="M7 7Q170 42 333 7" stroke="currentColor" stroke-width="1.8" vector-effect="non-scaling-stroke"/><path d="M7 7Q170 42 333 7" stroke="var(--cta-rope-highlight)" stroke-width=".5" stroke-dasharray="2 4"/><circle cx="7" cy="7" r="3.5" fill="var(--cta-wood-border)"/></svg>';
+      const hideNotes=hideArea(left,'notes','随手晾晾','cta-hide-notes',null);
+      hideNotes.setAttribute('aria-label','收起随手晾晾区域（不删除便签，可从顶部工具恢复）');hideNotes.title='收起便签区域 · 可从右上角顶部工具恢复';
+      const reel=hideNotes.createSpan({cls:'cta-rope-reel',attr:{'aria-hidden':'true'}});O.setIcon(reel,'chevrons-left');
       const notesRow=left.createDiv({cls:'cta-note-row'}),noteTools=left.createDiv({cls:'cta-note-tools'});
       const U=CarrotStickyUI,C=carrotStickyNotesCore();
       const add=button(noteTools,'贴一张',()=>new U.Editor(this).open());icon(add,'plus');add.createSpan({text:'贴一张'});
@@ -3244,7 +3262,9 @@ function carrotTopAreaCore() {
       const prev=button(noteTools,'上一组便签',()=>{this.offset=Math.max(0,this.offset-notesPerPage);this.refresh();});icon(prev,'chevron-left');
       const page=noteTools.createSpan({cls:'csn-top-page'});
       const next=button(noteTools,'下一组便签',()=>{this.offset+=notesPerPage;this.refresh();});icon(next,'chevron-right');
-      const focusMount=this.focus.mount(right),tick=()=>{
+      const focusMount=this.focus.mount(right);const hideFocus=hideArea(right.querySelector('.cta-focus-head'),'focus','专注一刻','cta-hide-focus');
+      const tick=()=>{
+        hideNotes.disabled=hideFocus.disabled=!!this.loadError;
         focusMount.tick();compactNotesText.textContent=`随手晾晾 · ${this.state.notes.length+this.state.archived.length}`;
         let snapshot;try{snapshot=carrotFocusMomentCore().snapshot(this.focus.state(),this.focus.plugin()?.settings,this.focus.nextDuration);}catch{}
         compactFocusText.textContent='专注一刻'+(snapshot?.time!=null?' · '+core.clock(snapshot.time):'');
@@ -3261,7 +3281,7 @@ function carrotTopAreaCore() {
         for(let i=0;i<notesPerPage;i++){
           const path=paths[i],card=notesRow.createDiv({cls:`cta-note cta-note-${i}`,attr:path?{'data-note-path':path}:undefined});
           if(!path){const empty=button(card,'贴一张便签',()=>new U.Editor(this).open(),'cta-empty');icon(empty,i?'sticky-note':'plus');empty.createSpan({text:i?'备忘、摘录\n都可以晾在这里':'贴一张，要记住的事'});continue;}
-          if(notesPerPage>1){const handle=button(card,'拖动纸夹排序',()=>{},'csn-note-drag');handle.createSpan({cls:'cta-clip',attr:{'aria-hidden':'true'}});U.bindDrag(this,handle,path,notesRow,'horizontal',f=>dragCleanups.push(f));}
+          if(notesPerPage>1){const handle=button(card,'拖动木夹排序',()=>{},'csn-note-drag');handle.createSpan({cls:'cta-clip',attr:{'aria-hidden':'true'}});U.bindDrag(this,handle,path,notesRow,'horizontal',f=>dragCleanups.push(f));}
           else card.createSpan({cls:'csn-mini-clip',attr:{'aria-hidden':'true'}}).createSpan({cls:'cta-clip'});
           const title=button(card,'改一改便签',()=>new U.Editor(this,path).open(),'cta-note-title');title.textContent='便签';
           const body=button(card,'改一改便签正文',()=>new U.Editor(this,path).open(),'cta-note-excerpt');
@@ -3276,7 +3296,7 @@ function carrotTopAreaCore() {
       const place=()=>{
         if(disposed)return;{
           if(this.dragging){this.pendingRefresh=true;return;}
-          root.hidden=!this.state.enabled||view.arrangeMode;
+          const shown=core.visibility(this.state);root.hidden=(!shown.notes&&!shown.focus)||view.arrangeMode;
           const bounds=inner.getBoundingClientRect();
           const desiredWidth=root.hidden?null:core.centerWidth(bounds.width);
           if(desiredWidth!==adaptiveWidth){
@@ -3289,9 +3309,15 @@ function carrotTopAreaCore() {
             }
           }
           const base=header.getBoundingClientRect(),end=board.getBoundingClientRect();
+          const tools=content.querySelector('.hearth-arrange-zone')?.getBoundingClientRect(),switcher=content.querySelector('.hearth-dash-switcher')?.getBoundingClientRect();
+          const gap=tools&&switcher?tools.left-switcher.right:0,toolWidth=gap>=104?96:32;
+          homeTools.hidden=!!view.arrangeMode;homeTools.toggleClass('is-icon-only',toolWidth===32);
+          Object.assign(homeTools.style,{left:`${(tools&&gap>=40?tools.left-toolWidth-8:bounds.right-toolWidth)-base.left}px`,top:`${(tools&&gap>=40?tools.top:(content.querySelector('.hearth-dash-switcher-zone')?.getBoundingClientRect().bottom??base.top)+4)-base.top}px`,width:`${toolWidth}px`,height:'32px'});
+          homeTools.toggleClass('has-hidden-area',!shown.notes||!shown.focus);
+          homeTools.title=(!shown.notes&&!shown.focus?'两个区域已隐藏；':!shown.notes?'随手晾晾已隐藏；':!shown.focus?'专注一刻已隐藏；':'')+'顶部工具：显示与隐藏';
           const center=[...header.querySelectorAll(':scope > .hearth-title,:scope > .hearth-search-wrap')].map(el=>({...rect(el),kind:'center'}));
           const others=[...content.querySelectorAll('.hearth-card,.hearth-dash-switcher-zone,.hearth-arrange-button,.hearth-home-toolbar')].map(el=>({...rect(el),kind:'protected'}));
-          const spaces=core.slots({left:bounds.left,right:bounds.right,top:base.top+6,bottom:end.top-12,obstacles:[...center,...others]});
+          const spaces=core.slots({left:bounds.left,right:bounds.right,top:base.top+6,bottom:end.top-12,obstacles:[...center,...others]}).filter(slot=>shown[slot.kind]);
           left.hidden=true;right.hidden=true;
           for(const slot of spaces){
             const panel=slot.kind==='notes'?left:right,mode=core.density(slot.width,slot.height),height=Math.min(slot.height,mode==='mini'?160:mode==='small'?176:190);
@@ -3300,14 +3326,14 @@ function carrotTopAreaCore() {
             if(slot.kind==='notes'){const size=mode==='mini'?1:2;if(size!==notesPerPage){notesPerPage=size;notes();}}
           }
           root.dataset.available=spaces.map(x=>x.kind).join(',');
-          compactNotes.hidden=!left.hidden;compactFocus.hidden=!right.hidden;compact.hidden=(!left.hidden&&!right.hidden)||root.hidden;
+          compactNotes.hidden=!shown.notes||!left.hidden;compactFocus.hidden=!shown.focus||!right.hidden;compact.hidden=(compactNotes.hidden&&compactFocus.hidden)||root.hidden;
           if(!compact.hidden){
             const nav=content.querySelector('.hearth-dash-switcher-zone')?.getBoundingClientRect();
             const anchor=nav?.height?nav.bottom+4:base.top;
             const visibleCenter=center.filter(r=>r.right>r.left&&r.bottom>r.top);
             const limit=visibleCenter.length?Math.min(...visibleCenter.map(r=>r.top))-4:base.top;
             compact.hidden=limit-anchor<26||bounds.width<270;
-            if(!compact.hidden){const width=Math.min(bounds.width,320);Object.assign(compact.style,{left:`${bounds.left-base.left+(bounds.width-width)/2}px`,top:`${anchor-base.top}px`,width:`${width}px`,height:'26px'});root.dataset.available+=(root.dataset.available?',':'')+'compact';}
+            if(!compact.hidden){const width=Math.min(Math.max(0,bounds.width-80),320);Object.assign(compact.style,{left:`${bounds.left-base.left+(bounds.width-width)/2}px`,top:`${anchor-base.top}px`,width:`${width}px`,height:'26px'});root.dataset.available+=(root.dataset.available?',':'')+'compact';}
           }
         }
       };
@@ -3316,11 +3342,11 @@ function carrotTopAreaCore() {
       const layoutRef=this.plugin.app.workspace.on('layout-change',place),activeRef=this.plugin.app.workspace.on('active-leaf-change',()=>{place();tick();});
       window.addEventListener('resize',place);
       const interval=window.setInterval(()=>{if(root.isConnected)tick();},1000);
-      const cleanup=()=>{if(disposed)return;disposed=true;readToken++;cancelAnimationFrame(raf);observer.disconnect();clearInterval(interval);this.plugin.app.workspace.offref(layoutRef);this.plugin.app.workspace.offref(activeRef);window.removeEventListener('resize',place);dragCleanups.forEach(f=>f());focusMount.cleanup();this.mounts.delete(mounted);header.removeClass('cta-adaptive-center');header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-title-fit');root.remove();};
+      const cleanup=()=>{if(disposed)return;disposed=true;readToken++;cancelAnimationFrame(raf);observer.disconnect();clearInterval(interval);this.plugin.app.workspace.offref(layoutRef);this.plugin.app.workspace.offref(activeRef);window.removeEventListener('resize',place);dragCleanups.forEach(f=>f());focusMount.cleanup();this.mounts.delete(mounted);header.removeClass('cta-adaptive-center');header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-title-fit');root.remove();homeTools.remove();};
       mounted.cleanup=cleanup;view.renderChild?.register(cleanup);
     }
     remount(){for(const m of [...this.mounts])m.cleanup();for(const leaf of this.plugin.app.workspace.getLeavesOfType('carrot-home-view'))this.mount(leaf.view);}
-    destroy(){this.dragAbort?.();for(const m of [...this.mounts])m.cleanup();this.listeners.clear();}
+    destroy(){this.visibilityMenu?.hide();this.dragAbort?.();for(const m of [...this.mounts])m.cleanup();this.listeners.clear();}
   }
   const previousRender=En.prototype.render;
   En.prototype.render=function(...args){const result=previousRender.apply(this,args);this.plugin.topArea?.mount(this);return result;};
@@ -3331,16 +3357,65 @@ function carrotTopAreaCore() {
     this.addCommand({id:'capture-top-inspiration',name:'随手晾晾：贴一张',callback:()=>new CarrotStickyUI.Editor(this.topArea).open()});
     this.addCommand({id:'toggle-top-tools',name:'顶部工具：显示／隐藏',callback:()=>this.topArea.update(state=>({...state,enabled:!state.enabled})).catch(e=>new O.Notice(e.message))});
     this.addCommand({id:'sticky-notes-all',name:'随手晾晾：全部便签',callback:()=>new CarrotStickyUI.Manager(this.topArea).open()});
+    this.addCommand({id:'top-tools-settings',name:'顶部工具：打开设置',callback:()=>{this.app.saveLocalStorage('hearth-settings-tab','top-tools');this.app.setting.open();this.app.setting.openTabById('carrot-home');}});
     this.addCommand({id:'focus-moment-open',name:'专注一刻：打开',callback:()=>this.topArea.focus.openPanel()});
     this.app.workspace.onLayoutReady(()=>this.topArea.remount());return result;
   };
+})();
+
+/* Extend only Carrot Home's own settings renderer (legacy and definitions paths). */
+;(()=>{
+  const O=require('obsidian'),route='top-tools',key='hearth-settings-tab';
+  const previousRoute=gs.prototype.activeRoute,previousIndex=gs.prototype.renderIndex,previousRender=gs.prototype.renderInto,previousHide=gs.prototype.hide;
+  gs.prototype.activeRoute=function(){return this.app.loadLocalStorage(key)===route?route:previousRoute.call(this);};
+  gs.prototype.renderIndex=function(container){
+    previousIndex.call(this,container);
+    const entry=container.createDiv({cls:'cta-settings-entry'}),row=entry.createDiv({cls:'hearth-settings-index-row',attr:{role:'button',tabindex:'0','aria-label':'顶部工具'}});
+    O.setIcon(row.createSpan({cls:'hearth-settings-index-glyph'}),'layout-panel-top');
+    const text=row.createDiv({cls:'hearth-settings-index-rowtext'});text.createDiv({cls:'hearth-settings-index-rowname',text:'顶部工具'});text.createDiv({cls:'hearth-settings-index-rowdesc',text:'随手晾晾、专注一刻的显示与管理'});O.setIcon(row.createSpan({cls:'hearth-settings-index-go'}),'chevron-right');
+    const open=()=>this.navigate(route);row.addEventListener('click',open);row.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
+    container.querySelector('.hearth-settings-index-head')?.after(entry);
+  };
+  function render(tab,container){
+    const owner=tab.plugin.topArea;container.empty();container.addClass('hearth-settings');
+    const back=container.createDiv({cls:'hearth-settings-back',attr:{role:'button',tabindex:'0','aria-label':'返回 Carrot Home 设置'}});O.setIcon(back.createSpan(),'chevron-left');back.createSpan({text:'Carrot Home'});const goBack=()=>tab.navigate('index');back.addEventListener('click',goBack);back.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();goBack();}});
+    container.createDiv({cls:'hearth-settings-page-title',text:'顶部工具'});container.createDiv({cls:'hearth-settings-page-desc',text:'设置主页便签和专注区域。三栏会随窗口宽度自动调整。'});
+    const body=container.createDiv({cls:'hearth-settings-tabbody cta-settings-body'});
+    if(!owner){body.createEl('p',{text:'顶部工具尚未加载，请重新打开设置。'});return;}
+    if(owner.loadError)body.createEl('p',{cls:'cta-settings-error',attr:{role:'alert'},text:'便签索引暂时无法读取，原文件已保留。请检查备份后重载插件；此处不会覆盖原数据。'});
+    const controls=new Map(),pending=new Set();
+    const sync=()=>{for(const [flag,control] of controls){if(!pending.has(flag))control.setValue(owner.state[flag]!==false);control.setDisabled(pending.has(flag)||!!owner.loadError||(flag!=='enabled'&&!owner.state.enabled));}};
+    const setFlag=async(flag,value)=>{
+      pending.add(flag);sync();
+      try{await owner.update(state=>({...state,[flag]:value}));}
+      catch(error){new O.Notice('设置未保存：'+error.message);}
+      finally{pending.delete(flag);sync();}
+    };
+    const toggle=(label,desc,flag,disabled=false)=>{
+      const setting=new O.Setting(body).setName(label).setDesc(desc);setting.settingEl.dataset.topFlag=flag;
+      setting.addToggle(control=>{control.toggleEl?.setAttribute('aria-label',label);control.setValue(owner.state[flag]!==false).setDisabled(disabled||!!owner.loadError).onChange(value=>setFlag(flag,value));controls.set(flag,control);});
+      return setting;
+    };
+    toggle('显示顶部工具','整体显示或隐藏；便签和 TaskNotes 计时数据会保留。','enabled');
+    body.createEl('h3',{text:'随手晾晾'});
+    toggle('显示随手晾晾','在主页展示便签。关闭后仍可从这里或命令面板管理。','notesEnabled',!owner.state.enabled);
+    new O.Setting(body).setName('便签管理').setDesc('备忘、临时待办、摘录都可以贴在这里。').addButton(b=>b.setButtonText('全部便签').onClick(()=>new CarrotStickyUI.Manager(owner).open())).addButton(b=>b.setButtonText('贴一张').setDisabled(!!owner.loadError).onClick(()=>new CarrotStickyUI.Editor(owner).open()));
+    new O.Setting(body).setName('原文存放位置').setDesc('Carrot Home 灵感/。沿用已有目录；收起来不会删除 Markdown。');
+    body.createEl('h3',{text:'专注一刻'});
+    toggle('显示专注一刻','在主页展示真实 TaskNotes 计时。隐藏不会停止当前会话。','focusEnabled',!owner.state.enabled);
+    new O.Setting(body).setName('计时与时长').setDesc('单次时长在卡片“更多…”中设置；默认专注、休息时长由 TaskNotes 管理。').addButton(b=>b.setButtonText('打开计时面板').onClick(()=>{tab.app.setting.close();owner.focus.openPanel();})).addButton(b=>b.setButtonText('TaskNotes 设置').onClick(()=>owner.focus.settings()));
+    body.createEl('p',{cls:'cta-settings-hint',text:'空间不足时会显示紧凑入口；也可以在命令面板搜索“随手晾晾”或“专注一刻”。'});
+    tab.__carrotTopToolsUnsubscribe=owner.subscribe(sync);
+  }
+  gs.prototype.renderInto=function(container){this.__carrotTopToolsUnsubscribe?.();this.__carrotTopToolsUnsubscribe=null;if(this.activeRoute()===route)return render(this,container);return previousRender.call(this,container);};
+  gs.prototype.hide=function(...args){this.__carrotTopToolsUnsubscribe?.();this.__carrotTopToolsUnsubscribe=null;return previousHide?.apply(this,args);};
 })();
 
 /* Carrot Home portable edition: BRAT edition: embedded defaults and fictional local samples. */
 ;(() => {
   const { Notice, Modal, Setting, TFile, normalizePath } = re;
   const base = 'Carrot Home 示例';
-  const defaults = {"title":"我的秘密基地","showTitle":true,"logo":"","logoIcon":"","tabIcon":"","themeColorTarget":"none","showSearch":true,"searchPlaceholder":"Search or command","showNewNoteButton":true,"newNoteButtonMode":"newNote","searchContents":true,"searchEngine":"builtin","backgroundKind":"default","backgroundValue":"","backgroundOpacity":0.35,"backgroundBlur":2,"backgroundLayout":"full","bannerHeight":220,"bannerFade":true,"bannerFullWidth":false,"openOnStartup":true,"replaceNewTabs":true,"focusSearchOnOpen":false,"liveRefresh":false,"mobileSearchOnly":false,"showMobileActionBar":true,"mobileActionButtons":[{"id":"action-new-note","label":"新建笔记","icon":"plus","type":"command","target":"carrot-home:new-note"},{"id":"action-new-drawing","label":"新建白板","icon":"pen-tool","type":"command","target":"carrot-home:new-drawing"},{"id":"action-record-voice","label":"录音","icon":"mic","type":"command","target":"carrot-home:record-voice"},{"id":"action-daily-note","label":"今日日记","icon":"calendar","type":"command","target":"carrot-home:open-daily-note"}],"disableExternalCalls":false,"openIn":"tab","openInOverrides":{"link":"default","search":"default","card":"default","newNote":"default"},"openFromOutside":"same","lowPower":false,"lowPowerBackgroundColor":"#4a4459","compact":false,"arrangeButtonVisibility":"always","dashboardSwitcherVisibility":"always","cardOpacity":0.5,"cardBlur":7,"cardRadius":14,"cardBorderWidth":1,"hiddenFilters":["bases","presentations","3d","spreadsheets"],"dashboards":[{"id":"dash-mtcqviyf-8009","name":"Home","cards":[{"kind":"clock","title":"","x":0,"y":0,"w":12,"h":2,"id":"card-mtcqx5it-0-2039","fx":0,"fw":0.20125,"fy":0,"fh":118,"clock":{"mode":"digital","hourFormat":"24"},"commands":[]},{"kind":"tasks","title":"Tasks","x":6,"y":2,"w":6,"h":5,"tasks":{"source":"tasknotes","layout":"kanban","kanbanDoneColumns":["done"],"kanbanOrder":["open","in-progress","done","none"],"kanbanColumnSort":{"done":{"reverse":true}}},"id":"card-mtcqx5it-2-1584","fx":0.21140939597315436,"fw":0.7885906040268457,"fy":0,"fh":625},{"kind":"schedule","title":"Calendar","x":0,"y":7,"w":8,"h":6,"id":"card-mtcqx5it-3-9810","fx":0,"fw":0.20125,"fy":117,"fh":358,"schedule":{"taskNotes":{"enabled":true,"scheduled":true,"due":true,"recurring":true,"timeblocks":true,"completed":true,"archived":false,"allowComplete":true,"subscriptions":true,"colorBy":"status"}}},{"kind":"recent","title":"Recent","count":10,"x":8,"y":7,"w":4,"h":4,"id":"card-mtcqx5it-4-7418","fx":0,"fw":0.20067796610169492,"fy":641,"fh":454},{"kind":"leaf","title":"项目甘特图","leafView":{"viewType":"hearth-gantt-view","hideHeader":true},"x":0,"y":13,"w":12,"h":6,"id":"card-hearth-gantt-1787917216","fx":0.21143847487001732,"fw":0.7885615251299827,"fy":641,"fh":571},{"kind":"bookmarks","title":"Bookmarks","x":0,"y":19,"w":4,"h":3,"id":"card-mtcqx5it-6-9500","fx":0,"fw":0.20125,"fy":491,"fh":134}],"fitToPage":false}],"activeDashboardId":"dash-mtcqviyf-8009","pinnedCards":[],"gridColumns":12,"rowHeight":92,"favorites":[],"fitToPage":true,"taskNotesStatusField":"status","taskNotesDueField":"due","taskNotesPriorityField":"priority","taskNotesDoneValue":"done","taskFieldsEnabled":false,"taskFields":[],"customFileIcons":true,"iconizeIconProperty":"icon","maxWidth":1600,"lastSeenVersion":"2.0.5","setupStatus":"done","homeToolbarActions":[{"id":"daily-note","label":"打开/创建今天的日记","icon":"calendar-days","commandId":"daily-notes","enabled":true},{"id":"tasknotes-pomodoro","label":"打开 TaskNotes 番茄钟","icon":"timer","commandId":"tasknotes:open-pomodoro-view","enabled":true},{"id":"command-mtjkyvmx","label":"TaskNotes: 打开日历视图","icon":"circle-check-big","commandId":"tasknotes:open-advanced-calendar-view","enabled":false}]};
+  const defaults = {"title":"我的秘密基地","showTitle":true,"logo":"","logoIcon":"","tabIcon":"","themeColorTarget":"none","showSearch":true,"searchPlaceholder":"Search or command","showNewNoteButton":true,"newNoteButtonMode":"newNote","searchContents":true,"searchEngine":"builtin","backgroundKind":"default","backgroundValue":"","backgroundOpacity":0.35,"backgroundBlur":2,"backgroundLayout":"full","bannerHeight":220,"bannerFade":true,"bannerFullWidth":false,"openOnStartup":true,"replaceNewTabs":true,"focusSearchOnOpen":false,"liveRefresh":false,"mobileSearchOnly":false,"showMobileActionBar":true,"mobileActionButtons":[{"id":"action-new-note","label":"新建笔记","icon":"plus","type":"command","target":"carrot-home:new-note"},{"id":"action-new-drawing","label":"新建白板","icon":"pen-tool","type":"command","target":"carrot-home:new-drawing"},{"id":"action-record-voice","label":"录音","icon":"mic","type":"command","target":"carrot-home:record-voice"},{"id":"action-daily-note","label":"今日日记","icon":"calendar","type":"command","target":"carrot-home:open-daily-note"}],"disableExternalCalls":false,"openIn":"tab","openInOverrides":{"link":"default","search":"default","card":"default","newNote":"default"},"openFromOutside":"same","lowPower":false,"lowPowerBackgroundColor":"#4a4459","compact":false,"arrangeButtonVisibility":"always","dashboardSwitcherVisibility":"always","cardOpacity":0.5,"cardBlur":7,"cardRadius":14,"cardBorderWidth":1,"hiddenFilters":["bases","presentations","3d","spreadsheets"],"dashboards":[{"id":"dash-mtcqviyf-8009","name":"Home","cards":[{"kind":"clock","title":"","x":0,"y":0,"w":12,"h":2,"id":"card-mtcqx5it-0-2039","fx":0,"fw":0.20125,"fy":0,"fh":118,"clock":{"mode":"digital","hourFormat":"24"},"commands":[]},{"kind":"tasks","title":"Tasks","x":6,"y":2,"w":6,"h":5,"tasks":{"source":"tasknotes","layout":"kanban","kanbanDoneColumns":["done"],"kanbanOrder":["open","in-progress","done","none"],"kanbanColumnSort":{"done":{"reverse":true}}},"id":"card-mtcqx5it-2-1584","fx":0.21140939597315436,"fw":0.7885906040268457,"fy":0,"fh":625},{"kind":"schedule","title":"Calendar","x":0,"y":7,"w":8,"h":6,"id":"card-mtcqx5it-3-9810","fx":0,"fw":0.20125,"fy":117,"fh":358,"schedule":{"taskNotes":{"enabled":true,"scheduled":true,"due":true,"recurring":true,"timeblocks":true,"completed":true,"archived":false,"allowComplete":true,"subscriptions":true,"colorBy":"status"}}},{"kind":"recent","title":"Recent","count":10,"x":8,"y":7,"w":4,"h":4,"id":"card-mtcqx5it-4-7418","fx":0,"fw":0.20067796610169492,"fy":641,"fh":454},{"kind":"leaf","title":"项目甘特图","leafView":{"viewType":"hearth-gantt-view","hideHeader":true},"x":0,"y":13,"w":12,"h":6,"id":"card-hearth-gantt-1787917216","fx":0.21143847487001732,"fw":0.7885615251299827,"fy":641,"fh":571},{"kind":"bookmarks","title":"Bookmarks","x":0,"y":19,"w":4,"h":3,"id":"card-mtcqx5it-6-9500","fx":0,"fw":0.20125,"fy":491,"fh":134}],"fitToPage":false}],"activeDashboardId":"dash-mtcqviyf-8009","pinnedCards":[],"gridColumns":12,"rowHeight":92,"favorites":[],"fitToPage":true,"taskNotesStatusField":"status","taskNotesDueField":"due","taskNotesPriorityField":"priority","taskNotesDoneValue":"done","taskFieldsEnabled":false,"taskFields":[],"customFileIcons":true,"iconizeIconProperty":"icon","maxWidth":1600,"lastSeenVersion":"2.1.0","setupStatus":"done","homeToolbarActions":[{"id":"daily-note","label":"打开/创建今天的日记","icon":"calendar-days","commandId":"daily-notes","enabled":true},{"id":"tasknotes-pomodoro","label":"打开 TaskNotes 番茄钟","icon":"timer","commandId":"tasknotes:open-pomodoro-view","enabled":true},{"id":"command-mtjkyvmx","label":"TaskNotes: 打开日历视图","icon":"circle-check-big","commandId":"tasknotes:open-advanced-calendar-view","enabled":false}]};
   const entries = [{"path":"Carrot Home 示例/开始使用.md","content":"# 欢迎来到 Carrot Home\n\n这是一套可离线使用的示例工作台。示例均为虚构，可编辑、勾选或删除。\n\n- Home：左侧时钟、日历、书签和最近笔记；右侧任务看板与项目甘特图。\n- 项目甘特图的新增项目入口可创建制作流程。\n- 双击/点击任务可按 TaskNotes 设置编辑或打开笔记；拖到其他看板列可修改状态。\n- 日期在首次启用时自动设为当天附近。以后重启不会重置任务，也不会补回你删除的示例。\n- 新任务默认放在 `Carrot Home 示例/任务`；可在 TaskNotes 设置里更改目录。\n- 这些示例只在本地读写；云日历、微信读书等账号功能需使用者自行配置，不附任何原作者凭据。\n\n## 快速试用\n\n1. 将“脚本-第一支示例视频”从进行中拖到已完成。\n2. 打开项目甘特图，调整一项任务日期。\n3. 在项目甘特图里新建自己的项目和任务。\n\n[[Carrot Home 示例/项目/第一支示例视频]] · [[Carrot Home 示例/项目/整理个人知识库]]\n\n## 布局与快捷功能\n\n默认板块位置、大小、间距和颜色来自原工作台。标题改为“我的秘密基地”；顶部 Resojot 与 Thino 图标已去掉。原布局随窗口宽度自适应，内容较长时向下滚动。\n\n移动端的画板按钮在未安装 Excalidraw 时使用 Obsidian 自带白板；录音使用核心录音机。日记、书签、白板、录音机和数据库需要开启对应核心插件。\n\n## 示例与真实工作\n\n删除示例前，可以先建立自己的项目与任务。所有示例都集中在本目录。工作台查询会读取库内带 task 标签的任务和 type: video 的项目；用于已有库时，也会显示符合这些字段的真实内容。\n"},{"path":"Carrot Home 示例/项目/第一支示例视频.md","content":"---\ntitle: 第一支示例视频\ncarrotProject: true\nproject_workflow: video\nproject_status: active\ntype: video\nvideo_stage: script\ntarget_publish: {{DAY:7}}\ntags: [示例项目]\n---\n\n# 第一支示例视频\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"},{"path":"Carrot Home 示例/项目/整理个人知识库.md","content":"---\ntitle: 整理个人知识库\ncarrotProject: true\nproject_workflow: general\nproject_status: active\ntags: [示例项目]\n---\n\n# 整理个人知识库\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"},{"path":"Carrot Home 示例/项目/已发布示例视频.md","content":"---\ntitle: 已发布示例视频\ncarrotProject: true\nproject_workflow: video\nproject_status: completed\ntype: video\nvideo_stage: published\ntarget_publish: {{DAY:-1}}\npublished_date: {{DAY:-1}}\ntags: [示例项目]\n---\n\n# 已发布示例视频\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"},{"path":"Carrot Home 示例/任务/选题-第一支示例视频.md","content":"---\ntitle: 选题-第一支示例视频\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:-1}}\ndue: {{DAY:0}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ncompletedDate: {{DAY:0}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/脚本-第一支示例视频.md","content":"---\ntitle: 脚本-第一支示例视频\nstatus: in-progress\npriority: high\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:1}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/拍摄-第一支示例视频.md","content":"---\ntitle: 拍摄-第一支示例视频\nstatus: open\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:1}}\ndue: {{DAY:2}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/剪辑-第一支示例视频.md","content":"---\ntitle: 剪辑-第一支示例视频\nstatus: open\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:2}}\ndue: {{DAY:4}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/发布-第一支示例视频.md","content":"---\ntitle: 发布-第一支示例视频\nstatus: open\npriority: low\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:5}}\ndue: {{DAY:6}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/整理收件箱.md","content":"---\ntitle: 整理收件箱\nstatus: in-progress\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:2}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/建立三个常用分类.md","content":"---\ntitle: 建立三个常用分类\nstatus: open\npriority: low\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:2}}\ndue: {{DAY:4}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/阅读工作台使用说明.md","content":"---\ntitle: 阅读工作台使用说明\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:0}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ncompletedDate: {{DAY:0}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/发布-已发布示例视频.md","content":"---\ntitle: 发布-已发布示例视频\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:-2}}\ndue: {{DAY:-1}}\nprojects:\n  - \"[[Carrot Home 示例/项目/已发布示例视频]]\"\ncompletedDate: {{DAY:-1}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/想到一个新点子，稍后整理.md","content":"---\ntitle: 想到一个新点子，稍后整理\nstatus: none\npriority: none\ntags: [task, CarrotHome示例]\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/选题/示例-分享我的工作台.md","content":"---\ntitle: 示例-分享我的工作台\ntype: video\nvideo_stage: idea\nproject_status: active\ntags: [选题]\n---\n\n# 分享我的工作台\n\n## 为什么想做\n\n把一个好用的小方法讲清楚。\n\n## 提纲与脚本\n\n- 遇到了什么问题\n- 我的解决方法\n- 观众可以马上试的一个动作\n"}];
   const freshSettings = saved => saved == null || (typeof saved === 'object' && !Array.isArray(saved) && !Object.keys(saved).length);
   const dir = plugin => plugin.manifest.dir || `${plugin.app.vault.configDir}/plugins/carrot-home`;

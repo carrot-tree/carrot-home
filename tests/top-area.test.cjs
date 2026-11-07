@@ -11,7 +11,7 @@ test('sidecar normalization preserves compatible user fields and rejects unsafe 
  assert.throws(()=>core.normalize({version:2,notes:['../bad.md']}));assert.equal(core.safePath('a\u0000.md'),false);
 });
 test('unknown/corrupt sidecars fail closed',()=>{for(const value of [null,{},[],{version:3,notes:[]},{version:1,notes:'wrong'}])assert.throws(()=>core.normalize(value));});
-test('empty initial state contains no invented note or task',()=>assert.deepEqual(plain(core.defaultState()),{version:2,enabled:true,notes:[],archived:[],drafts:{},focusPath:''}));
+test('empty initial state contains no invented note or task',()=>assert.deepEqual(plain(core.defaultState()),{version:2,enabled:true,notesEnabled:true,focusEnabled:true,notes:[],archived:[],drafts:{},focusPath:''}));
 test('layout uses only measured empty side rectangles',()=>{
  const obstacle={left:450,right:1170,top:80,bottom:240,kind:'center'};
  const slots=plain(core.slots({left:20,right:1600,top:80,bottom:280,obstacles:[obstacle]}));
@@ -58,4 +58,14 @@ test('switching between one- and two-note pages retains order and every note',()
  const one=core.notePage(paths,3,1),two=core.notePage(paths,one.offset,2);assert.ok(two.paths.includes(one.paths[0]));
  assert.equal(core.notePage(paths,500,1).offset,38);assert.equal(core.notePage(paths,-5,2).offset,0);
  assert.equal(core.notePage([],8,1).pages,1);assert.deepEqual(plain(core.notePage([],8,1).paths),[]);
+});
+test('master and independent switches hide presentation without touching content',()=>{const state={...core.defaultState(),notes:['a.md'],focusPath:'task.md'};assert.deepEqual(plain(core.visibility(state)),{notes:true,focus:true});assert.deepEqual(plain(core.visibility({...state,notesEnabled:false})),{notes:false,focus:true});assert.deepEqual(plain(core.visibility({...state,focusEnabled:false})),{notes:true,focus:false});assert.deepEqual(plain(core.visibility({...state,enabled:false})),{notes:false,focus:false});assert.deepEqual(plain(state.notes),['a.md']);assert.equal(state.focusPath,'task.md');});
+test('homepage restore enables the master without changing the other area, notes or task',async()=>{
+ const end=source.indexOf('  const previousRender=En.prototype.render;'),sandbox={require:()=>({})};
+ vm.runInNewContext(sticky+'\n'+source.slice(0,end)+'\nglobalThis.TestTopArea=TopArea;})();',sandbox);
+ let state={enabled:false,notesEnabled:false,focusEnabled:false,notes:['kept.md'],focusPath:'task.md'};
+ const owner={update:async fn=>state=fn(state)},set=sandbox.TestTopArea.prototype.setAreaVisible;
+ await set.call(owner,'notes',true);assert.deepEqual(plain(state),{enabled:true,notesEnabled:true,focusEnabled:false,notes:['kept.md'],focusPath:'task.md'});
+ await set.call(owner,'notes',false);assert.equal(state.enabled,true);assert.equal(state.notesEnabled,false);
+ await assert.rejects(set.call(owner,'other',true),/未知/);
 });
