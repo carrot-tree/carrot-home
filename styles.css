@@ -14143,14 +14143,16 @@ body.hearth-dv-resizing {
 .hearth-view .cta-compact .cta-button:hover {background:var(--background-modifier-hover);color:var(--text-normal);}
 .hearth-view .cta-compact .cta-button:focus-visible {outline:2px solid var(--interactive-accent);outline-offset:2px;}
 
-/* Fluid middle column: the search/title shrink before either side is folded. */
+/* Readable middle column: side tools compact before the search becomes cramped. */
 .hearth-view .hearth-header.cta-adaptive-center > .hearth-search-wrap {max-width:var(--cta-center-width);}
 .hearth-view .hearth-header.cta-adaptive-center > .hearth-title {max-width:var(--cta-center-width);min-height:calc(1lh * max(1,var(--hearth-title-scale,1),var(--hearth-logo-scale,1)));}
 .hearth-view .cta-adaptive-center .hearth-title-text {white-space:nowrap;font-size:calc(1em * var(--hearth-title-scale,1) * var(--cta-title-fit,1));}
 .hearth-view .cta-adaptive-center .hearth-search-bar {min-width:0;}
 .hearth-view .cta-adaptive-center .hearth-search-input {min-width:0;width:0;}
 .hearth-view .cta-adaptive-center .hearth-newnote {flex-shrink:0;}
-.hearth-view .cta-adaptive-center .hearth-filters {flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;column-gap:clamp(8px,calc((var(--cta-center-width) - 400px) * .2),48px);}
+.hearth-view .cta-adaptive-center .hearth-filters {flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;column-gap:12px;overscroll-behavior-inline:contain;}
+.hearth-view .cta-adaptive-center .hearth-filter {flex:0 0 38px;min-width:38px;height:38px;box-sizing:border-box;}
+.hearth-view .cta-adaptive-center .hearth-filter-icon,.hearth-view .cta-adaptive-center .hearth-filter-icon svg {flex-shrink:0;}
 
 /* Side tools scale and change density with the room they actually receive. */
 .hearth-view .cta-notes button.cta-note-title {font-size:clamp(12px,calc(15px * var(--cta-ui-scale,1)),15px);}
@@ -14204,10 +14206,9 @@ body.hearth-dv-resizing {
 .hearth-view button.cta-fold-notes:hover {background:transparent;color:var(--cta-rope-color);}
 .hearth-view .cta-rope-reel {width:19px;height:19px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:none;border:1px solid var(--cta-wood-border);border-radius:5px;background:var(--cta-paper);color:var(--cta-wood-ink);transition:background .12s ease;}
 .hearth-view .cta-rope-reel svg {width:12px;height:12px;stroke-width:1.7;}
-.hearth-view button.cta-fold-notes:hover .cta-rope-reel,.hearth-view button.cta-fold-notes:focus-visible .cta-rope-reel {background:color-mix(in srgb,var(--cta-wood-border) 15%,var(--cta-paper));}
+.hearth-view button.cta-fold-notes:hover .cta-rope-reel,.hearth-view button.cta-fold-notes:focus-visible .cta-rope-reel,.hearth-view button.cta-fold-focus:hover .cta-rope-reel,.hearth-view button.cta-fold-focus:focus-visible .cta-rope-reel {background:color-mix(in srgb,var(--cta-wood-border) 15%,var(--cta-paper));}
 @media (prefers-reduced-motion:reduce) {.hearth-view .cta-rope-reel {transition:none;}}
 .hearth-view .cta-focus-head .cfm-phase {min-width:0;flex:1;text-align:right;}
-.hearth-view .cta-focus-head button.cta-hide-focus {margin:-5px -5px -5px 0;}
 
 /* Selected B: a fine hemp line, wooden pegs and warm paper. Only the new notes area. */
 .hearth-view .cta-notes {--cta-rope-color:#a68f72;--cta-rope-highlight:#e4d4ba;--cta-paper:#fffdf6;--cta-paper-border:#e5dfcf;--cta-wood-border:#b89972;--cta-wood-ink:#96744e;--cta-wood-grain:#ae8864;--cta-wood-1:#ddbf98;--cta-wood-2:#e7cba9;--cta-wood-3:#bc956c;--cta-wood-4:#dabc96;--cta-wood-5:#e4c5a0;}
@@ -14236,3 +14237,40 @@ body.hearth-dv-resizing {
 .hearth-view .cta-notes.is-collapsed .cta-fold-notes .cta-rope-reel {display:none;}
 .hearth-view .cta-notes.is-collapsed .cta-fold-notes .cta-rope-coil {display:block;}
 .hearth-view .cta-notes.is-collapsed button.cta-fold-notes:hover {background:color-mix(in srgb,var(--cta-wood-border) 10%,transparent);}
+
+/* Focus folds toward the right edge; its real timer stays available in the pill. */
+.hearth-view .cta-focus {transition:left .2s ease,width .2s ease,height .2s ease,padding .2s ease;}
+.hearth-view .cta-focus-content {display:flex;flex-direction:column;gap:inherit;height:100%;min-height:0;transition:opacity .16s ease,transform .2s ease;}
+.hearth-view .cta-focus-content .cta-focus-head {padding-right:20px;}
+.hearth-view button.cta-fold-focus {position:absolute;top:6px;right:7px;width:24px;height:24px;min-height:24px;padding:4px;border-radius:5px;z-index:2;}
+.hearth-view .cta-fold-focus .cta-icon svg {width:13px;height:13px;}
+.hearth-view .cta-fold-clock {font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.hearth-view .cta-focus.is-folded {padding:0;gap:0;border-radius:10px;}
+.hearth-view .cta-focus.is-folded .cta-focus-content {visibility:hidden;opacity:0;transform:translateX(14px);pointer-events:none;}
+.hearth-view .cta-focus.is-folded button.cta-fold-focus {top:0;right:0;width:100%;height:100%;min-height:0;gap:7px;padding:0 9px;border-radius:inherit;color:var(--interactive-accent);}
+.hearth-view .cta-focus.is-folded button.cta-fold-focus:focus-visible {outline-offset:-3px;}
+.hearth-view .cta-focus.is-folded[data-focus-phase="work"] {background:color-mix(in srgb,var(--interactive-accent) 8%,var(--background-primary));}
+@media (prefers-reduced-motion:reduce) {.hearth-view .cta-focus,.hearth-view .cta-focus-content {transition:none;}}
+
+/* Standalone circular focus dial; the rectangular slot itself is invisible. */
+.hearth-view .cta-focus:not(.is-folded) {padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible;}
+.hearth-view .cta-focus .cfm-ticket {position:relative;display:block;height:100%;}
+.hearth-view .cta-focus .cfm-ticket .cta-focus-head,.hearth-view .cfm-ticket-face,.hearth-view .cfm-ticket-detail,.hearth-view .cfm-ticket-controls {display:contents;}
+.hearth-view .cta-focus .cfm-ticket .cta-focus-head>span:first-child {position:absolute;top:0;left:0;right:0;text-align:center;font-size:10px;line-height:14px;color:var(--text-muted);}
+.hearth-view .cta-focus .cfm-ticket .cfm-phase {position:absolute;z-index:1;top:90px;left:22px;width:100px;max-width:none;text-align:center;font-size:9px;line-height:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-muted);}
+.hearth-view .cfm-ticket-dial {--cfm-turn:0deg;position:absolute;top:20px;left:22px;width:100px;height:100px;display:grid;place-items:center;border-radius:50%;background:conic-gradient(var(--interactive-accent) var(--cfm-turn),color-mix(in srgb,var(--interactive-accent) 15%,var(--background-primary)) 0);box-shadow:0 3px 14px #00000008;}
+.hearth-view .cfm-ticket-dial::before {content:'';position:absolute;inset:4px;background:color-mix(in srgb,var(--interactive-accent) 3%,var(--background-primary));border-radius:50%;}
+.hearth-view .cta-focus .cfm-ticket .cta-time {position:relative;top:-4px;font-size:23px;letter-spacing:-1px;line-height:1;font-weight:650;}
+.hearth-view .cta-focus .cfm-ticket button.cta-task {position:absolute;top:130px;left:0;width:144px;min-height:18px;height:18px;text-align:center;font-size:11px;line-height:18px;}
+.hearth-view .cta-focus .cfm-ticket button.cfm-main {position:absolute;top:96px;left:104px;width:32px;height:32px;min-height:32px;min-width:32px;padding:7px;border-radius:50%;background:var(--interactive-accent);border:3px solid var(--background-primary);color:var(--text-on-accent);box-shadow:0 1px 6px #00000015;}
+.hearth-view .cta-focus .cfm-ticket button.cfm-main .cta-icon svg {width:14px;height:14px;}
+.hearth-view .cta-focus .cfm-ticket button.cfm-ticket-more {position:absolute;top:20px;left:120px;width:24px;height:24px;min-height:24px;padding:4px;border-radius:50%;background:transparent;color:var(--text-muted);}
+.hearth-view .cfm-ticket-more .cta-icon svg {width:14px;height:14px;}
+.hearth-view .cta-focus:not(.is-folded) button.cta-fold-focus {top:18px;left:-2px;right:auto;width:28px;height:28px;min-height:28px;padding:4.5px;border-radius:50%;background:transparent;color:var(--cta-wood-ink);}
+.hearth-view .cta-focus:not(.is-folded) button.cta-fold-focus:hover {background:transparent;}
+.hearth-view .cfm-ticket .cta-focus-bottom,.hearth-view .cfm-ticket .cfm-hint {position:absolute;clip-path:inset(50%);height:1px;width:1px;overflow:hidden;white-space:nowrap;}
+.hearth-view .cfm-ticket[data-warning="true"] .cfm-phase {color:var(--text-warning,var(--text-error));}
+.hearth-view .cfm-ticket.cta-is-running .cfm-ticket-dial {box-shadow:0 0 0 5px color-mix(in srgb,var(--interactive-accent) 6%,transparent);}
+
+/* Match the focus dial palette while retaining the shared folding-button shape. */
+.hearth-view .cta-focus {--cta-wood-border:color-mix(in srgb,var(--interactive-accent) 55%,var(--background-modifier-border));--cta-wood-ink:var(--interactive-accent);--cta-paper:color-mix(in srgb,var(--interactive-accent) 4%,var(--background-primary));}

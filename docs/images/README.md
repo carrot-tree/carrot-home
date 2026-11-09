@@ -11,3 +11,7 @@
 背景由维护者提供，仅用于 README 展示，不随插件安装，也不改变插件默认背景。卡片大小、布局、透明度和窗口缩放均为演示设置，用户可以按自己的需要调整。
 
 项目来自 [ondreu/Hearth](https://github.com/ondreu/Hearth)，来源与许可说明见仓库 [README](../../README.md#hearth-来源与许可)、[LICENSE](../../LICENSE) 和 [NOTICE](../../NOTICE.md)。
+
+## 2.1.3 专注圆盘
+
+`focus-dial-expanded.png` 与 `focus-dial-folded.png` 来自独立“计时签测试库”的真实 Obsidian 1.15.0 插件界面，使用虚构示例任务与便签，默认浅色主题；未使用正式笔记库截图，也未使用生成式模型重绘。

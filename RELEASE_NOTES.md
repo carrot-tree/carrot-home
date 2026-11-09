@@ -1,22 +1,21 @@
-Carrot Home 2.1.2 将左侧便签改为真正沿绳子向左收拢，收好后留下固定钉上的一小段单圈绳，点击单圈即可向右展开。
+Carrot Home 2.1.3 将右侧专注区域改成独立圆形计时盘，保留主页原有布局，并修正搜索区缩小时被过度挤压的问题。
 
-- 保留已选定的木夹、细麻绳和奶油纸样式；收起后使用简洁单圈，不是多层盘绳。
-- 单圈本身就是展开入口，支持鼠标和键盘；折叠内容退出焦点顺序。
-- 折叠与整个区域的显隐开关独立；不改变原首页布局、便签顺序与原文，也不操作 TaskNotes 会话。
-- 设置和区域显示恢复仍在原有主页右上角“…”菜单及“设置 → Carrot Home → 顶部工具”。此前手动隐藏的区域可从这里重新显示。
+- **圆形计时盘**：去掉长方形底板，任务名放下方，播放/暂停按钮嵌在圆盘边缘；倒计时与圆环进度来自同一个真实 TaskNotes 会话。
+- **向右收起**：右侧双箭头沿用左侧便签按钮的造型，使用专注主题色；收起后留下真实倒计时胶囊，点击即可展开，计时持续，折叠状态会保存。
+- **操作更集中**：换任务、确认结束、时长和 TaskNotes 原生面板入口集中在圆盘“…”中，原任务标题仍可打开原笔记。
+- **搜索更好用**：三栏模式中间整组保持至少 480px；空间不足时两侧改为紧凑入口。快捷分类保持方形，放不下时横向滚动，不再挤成细条。
+- 便签 Markdown、顺序、草稿、原有专注选择和首页卡片布局保持；完整显隐开关仍在主页原有“…”菜单与设置页。
 
-### 展开状态
+### 圆盘展开
 
-![展开：木夹、细麻绳和便签](https://raw.githubusercontent.com/carrot-tree/carrot-home/2.1.2/docs/images/sticky-notes-expanded.png)
+![圆形专注计时盘与主题色双箭头](https://raw.githubusercontent.com/carrot-tree/carrot-home/2.1.3/docs/images/focus-dial-expanded.png)
 
-### 向左收起
+### 向右收起
 
-左端只留固定钉与单圈短绳；点击绳圈向右展开。
+![收起后保留真实倒计时和展开入口](https://raw.githubusercontent.com/carrot-tree/carrot-home/2.1.3/docs/images/focus-dial-folded.png)
 
-![收起：点击左侧单圈展开](https://raw.githubusercontent.com/carrot-tree/carrot-home/2.1.2/docs/images/sticky-notes-folded.png)
+图片来自独立桌面测试库的实际插件界面，使用虚构示例内容；PNG 为效果图，无需安装。
 
-图片为独立桌面预览库的真实界面，使用虚构示例内容。
+升级前备份插件目录，只替换 `main.js`、`manifest.json`、`styles.css` 后重载 Carrot Home，保留 `data.json`、`top-area.json`、备份与所有 Markdown。无需重启 TaskNotes。
 
-升级前备份插件目录，仅替换 `main.js`、`manifest.json`、`styles.css` 后重载 Carrot Home。保留 `data.json`、`top-area.json`、备份及所有笔记；两张 PNG 只是效果图，无需安装。
-
-92 项自动化测试通过，独立预览中真实鼠标连续收起、展开、再收起均可命中展开入口，便签数据保持；正式桌面库亦已验证单圈收起/展开，原有番茄钟持续运行。移动端真机及其它 TaskNotes 版本未补充专项验收。
+94 项自动化测试通过；独立桌面实际验证开始、暂停、继续、菜单结束/取消、折叠/展开、重载保持同一会话，以及九档宽度的快捷图标与搜索区域。当前圆盘版另验收了实际圆按钮和菜单收放；未重新完成全套长休息到时、移动真机、其它 TaskNotes 版本或系统休眠专项测试。

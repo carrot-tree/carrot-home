@@ -34,6 +34,8 @@ var CarrotFocusMoment=(()=>{
     constructor(focus){super(focus.owner.plugin.app);this.focus=focus;}
     onOpen(){
       this.modalEl.addClass('cfm-actions');this.titleEl.setText('专注一刻 · 更多操作');const f=this.focus,v=C.snapshot(f.state(),f.plugin()?.settings,f.nextDuration);
+      button(this.contentEl,'换任务',()=>{this.close();f.pickTask();}).disabled=f.busy;
+      if(v.session)button(this.contentEl,v.rest?'结束休息':'结束本轮',()=>{this.close();new Confirm(f,v.rest?'结束当前休息？':'结束当前一轮？','stop').open();}).disabled=f.busy;
       if(!v.session&&v.phase!=='completed'){
         this.contentEl.createEl('p',{text:'下一轮时长：只影响本轮，不修改 TaskNotes 的全局设置。',cls:'csn-hint'});
         const row=this.contentEl.createDiv({cls:'cfm-duration-options'});
@@ -89,32 +91,33 @@ var CarrotFocusMoment=(()=>{
     }
     refresh(){for(const v of this.views)v.tick();}
     mount(root){
+      root.addClass('cfm-ticket');
       const head=root.createDiv({cls:'cta-focus-head'});head.createSpan({text:'专注一刻'});const label=head.createSpan({cls:'cfm-phase'});
-      const task=button(root,'选择任务',()=>{const state=this.state(),path=state?.currentSession?.type==='work'?state.currentSession.taskPath:state?.currentSession?null:this.owner.state.focusPath;return path?this.owner.openFile(path):this.pickTask();},'cta-task');
-      const timerRow=root.createDiv({cls:'cta-timer-row'}),time=timerRow.createSpan({cls:'cta-time'}),main=button(timerRow,'开始专注',()=>this.main(),'cta-play cfm-main');
+      const face=root.createDiv({cls:'cfm-ticket-face'}),dial=face.createDiv({cls:'cfm-ticket-dial'}),time=dial.createSpan({cls:'cta-time'}),detail=face.createDiv({cls:'cfm-ticket-detail'});
+      const task=button(detail,'选择任务',()=>{const state=this.state(),path=state?.currentSession?.type==='work'?state.currentSession.taskPath:state?.currentSession?null:this.owner.state.focusPath;return path?this.owner.openFile(path):this.pickTask();},'cta-task');
+      const controls=detail.createDiv({cls:'cfm-ticket-controls'}),main=button(controls,'开始专注',()=>this.main(),'cta-play cfm-main'),more=button(controls,'更多专注操作：换任务、结束和时长',()=>new Actions(this).open(),'cfm-ticket-more');icon(more,'ellipsis');
       const bottom=root.createDiv({cls:'cta-focus-bottom'}),track=bottom.createDiv({cls:'cta-progress'}),fill=track.createDiv({cls:'cta-progress-fill'}),duration=bottom.createSpan({cls:'cta-status'});
-      const hint=root.createDiv({cls:'cfm-hint',attr:{role:'status'}}),foot=root.createDiv({cls:'cta-focus-foot'});
-      const choose=button(foot,'换任务',()=>this.pickTask());const end=button(foot,'结束本轮',()=>new Confirm(this,this.state()?.currentSession?.type==='work'?'结束当前一轮？':'结束当前休息？','stop').open());
-      const more=button(foot,'更多专注操作',()=>new Actions(this).open());more.textContent='更多…';
+      const hint=root.createDiv({cls:'cfm-hint',attr:{role:'status'}});
       let disposed=false,token=0;
       const tick=async()=>{
         if(disposed||!root.isConnected)return;const current=++token,tn=this.plugin();let state,v;
-        try{state=tn?.pomodoroService?.getState?.();v=C.snapshot(state,tn?.settings,this.nextDuration);}catch(e){label.textContent='状态读取失败';hint.textContent='请打开 TaskNotes 检查';main.disabled=true;return;}
-        label.textContent=tn&&!state?'加载中…':v.label;time.textContent=v.time===null?'--:--':C.clock(v.time);
-        main.textContent=v.button;main.setAttribute('aria-label',v.button);main.title=v.button;main.disabled=this.busy||v.zero;
-        const total=v.duration||v.time||0;fill.style.width=`${v.session&&total>0?Math.min(100,Math.max(0,(1-v.time/total)*100)):0}%`;
+        try{state=tn?.pomodoroService?.getState?.();v=C.snapshot(state,tn?.settings,this.nextDuration);}catch(e){label.textContent='状态读取失败';hint.textContent='请打开 TaskNotes 检查';root.dataset.warning='true';main.disabled=true;return;}
+        label.textContent=tn&&!state?'加载中…':v.phase==='idle'?'待开始':v.label;label.title=v.label;root.dataset.warning='false';time.textContent=v.time===null?'--:--':C.clock(v.time);
+        icon(main,!tn?'settings':v.phase==='completed'?'coffee':state?.isRunning?'pause':'play');main.setAttribute('aria-label',v.button);main.title=v.button;main.disabled=this.busy||v.zero;
+        const total=v.duration||v.time||0,progress=v.session&&total>0?Math.min(100,Math.max(0,(1-v.time/total)*100)):0;fill.style.width=`${progress}%`;dial.style.setProperty('--cfm-turn',`${progress*3.6}deg`);dial.title=v.label+' · '+time.textContent;
         duration.textContent=v.session?`${v.detail||'本轮'} ${total?C.clock(total):'--:--'}`:v.time===null?'':`本轮 ${C.clock(v.time)}`;
-        end.hidden=!v.session;end.textContent=v.rest?'结束休息':'结束本轮';end.setAttribute('aria-label',end.textContent);choose.disabled=this.busy;end.disabled=this.busy;more.disabled=this.busy;
+        more.disabled=this.busy;
         root.toggleClass('cta-is-running',!!state?.isRunning);
         const path=v.session?v.path:this.owner.state.focusPath;
         if(v.rest){task.textContent=v.detail+'，让眼睛放松一下';task.setAttribute('aria-label','打开 TaskNotes 休息面板');task.onclick=null;hint.textContent=v.zero?'等待 TaskNotes 结算休息':'休息计时由 TaskNotes 同步';task.disabled=true;this.currentTitle=v.detail;return;}
         task.disabled=false;
         if(v.session&&!path){task.textContent='未绑定任务的专注';task.disabled=true;hint.textContent=v.zero?'等待 TaskNotes 完成本轮':'可在原生面板查看此会话';this.currentTitle=task.textContent;return;}
-        if(!tn){task.textContent='启用 TaskNotes 后开始专注';task.setAttribute('aria-label','查看 TaskNotes 设置');hint.textContent='便签仍可独立使用';return;}
+        if(!tn){root.dataset.warning='true';task.textContent='启用 TaskNotes 后开始专注';task.setAttribute('aria-label','查看 TaskNotes 设置');hint.textContent='便签仍可独立使用';return;}
         if(!path){task.textContent='选择一件要做的事 ↗';task.setAttribute('aria-label','选择专注任务');hint.textContent=v.phase==='completed'?'开始休息会使用 TaskNotes 配置的时长':'点击选择，或用“换任务”搜索';return;}
         const meta=await this.meta(path);if(disposed||current!==token)return;
         const file=this.owner.plugin.app.vault.getAbstractFileByPath(path),valid=C.taskValid(meta,tn.settings);
         task.textContent=meta?.title||file?.basename||'原任务已移除';task.setAttribute('aria-label','打开原任务：'+task.textContent);task.title=task.textContent;this.currentTitle=task.textContent;
+        if(!valid){root.dataset.warning='true';label.textContent=v.session?'任务已变更':'请重新选任务';}
         hint.textContent=v.zero?'等待 TaskNotes 完成本轮':!valid?(v.session?'原任务已完成、归档或移除；当前计时仍保留':'原任务已完成、归档或移除，请换任务'):v.phase==='completed'?'本轮已完成，任务状态保持不变':this.nextDuration?'单次时长已选，开始时生效':'与 TaskNotes 同步';
       };
       const view={tick};this.views.add(view);tick();const onVisible=()=>tick();document.addEventListener('visibilitychange',onVisible);window.addEventListener('focus',onVisible);

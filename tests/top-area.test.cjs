@@ -11,7 +11,7 @@ test('sidecar normalization preserves compatible user fields and rejects unsafe 
  assert.throws(()=>core.normalize({version:2,notes:['../bad.md']}));assert.equal(core.safePath('a\u0000.md'),false);
 });
 test('unknown/corrupt sidecars fail closed',()=>{for(const value of [null,{},[],{version:3,notes:[]},{version:1,notes:'wrong'}])assert.throws(()=>core.normalize(value));});
-test('empty initial state contains no invented note or task',()=>assert.deepEqual(plain(core.defaultState()),{version:2,enabled:true,notesEnabled:true,focusEnabled:true,notesCollapsed:false,notes:[],archived:[],drafts:{},focusPath:''}));
+test('empty initial state contains no invented note or task',()=>assert.deepEqual(plain(core.defaultState()),{version:2,enabled:true,notesEnabled:true,focusEnabled:true,notesCollapsed:false,focusCollapsed:false,notes:[],archived:[],drafts:{},focusPath:''}));
 test('layout uses only measured empty side rectangles',()=>{
  const obstacle={left:450,right:1170,top:80,bottom:240,kind:'center'};
  const slots=plain(core.slots({left:20,right:1600,top:80,bottom:280,obstacles:[obstacle]}));
@@ -37,13 +37,13 @@ test('deferred Obsidian home views do not abort header mounting on reopen',()=>{
  for(const view of [undefined,{}, {getViewType:()=> 'carrot-home-view'}, {contentEl:{}}])
   assert.doesNotThrow(()=>sandbox.TestTopArea.prototype.mount.call({},view));
 });
-test('all columns shrink together before reaching the readable mini-card minimum',()=>{
- assert.equal(core.centerWidth(1600),720);assert.equal(core.centerWidth(712),300);assert.equal(core.centerWidth(711),null);
+test('search has a readable floor while side cards yield and cap their size',()=>{
+ assert.equal(core.centerWidth(1600),720);assert.equal(core.centerWidth(872),480);assert.equal(core.centerWidth(871),null);
  let previousSide=Infinity;
- for(const width of [1400,1200,1000,900,800,712]){
+ for(const width of [1400,1200,1000,900,880,872]){
   const center=core.centerWidth(width),lo=(width-center)/2;
   const slots=core.slots({left:0,right:width,top:0,bottom:200,obstacles:[{left:lo,right:lo+center,top:0,bottom:190,kind:'center'}]});
-  assert.equal(slots.length,2);assert.ok(slots.every(s=>s.width>=189.9));
+  assert.equal(slots.length,2);assert.ok(center>=480);assert.ok(slots.every(s=>s.width>=(s.kind==='focus'?143.9:179.9)));assert.ok(slots.find(s=>s.kind==='focus').width===144);assert.ok(slots.find(s=>s.kind==='notes').width<=300);
   assert.ok(slots[0].width<=previousSide);previousSide=slots[0].width;
  }
  assert.ok(core.centerWidth(1000)>core.centerWidth(900));
@@ -77,3 +77,5 @@ test('existing pane menu retains its own items and offers recovery while both ar
  const items=[],menu={addSeparator(){},addItem(fn){const item={setTitle(t){this.title=t;return this;},setChecked(v){this.checked=v;return this;},setDisabled(v){this.disabled=v;return this;},setIcon(){return this;},onClick(fn){this.run=fn;return this;}};fn(item);items.push(item);return this;}};
  const view=new HomeView();view.plugin={topArea:owner};assert.equal(view.onPaneMenu(menu,'more-options'),'kept');assert.equal(menu.original,'more-options');assert.equal(items.find(x=>x.title==='显示随手晾晾').checked,false);await items.find(x=>x.title==='显示随手晾晾').run();assert.equal(state.enabled,true);assert.equal(state.notesEnabled,true);assert.equal(state.notesCollapsed,true);assert.deepEqual(state.notes,['keep.md']);
 });
+
+test('folded focus keeps the original right edge without changing expanded geometry',()=>{for(const width of [190,240,310]){const frame={left:700,width,height:190};assert.deepEqual(plain(core.focusFrame(frame,false)),frame);const small=core.focusFrame(frame,true);assert.equal(small.left+small.width,frame.left+frame.width);assert.equal(small.width,96);assert.equal(small.height,32);assert.equal(frame.width,width);}});

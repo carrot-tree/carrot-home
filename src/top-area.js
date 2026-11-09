@@ -9,20 +9,21 @@ function carrotTopAreaCore() {
     const center=visible.filter(r=>r.kind==='center');
     if (!center.length || bottom-top<154) return [];
     const lo=Math.min(...center.map(r=>r.left)),hi=Math.max(...center.map(r=>r.right));
-    const candidates=[{kind:'notes',left,top,width:Math.min(340,lo-left-16),height:Math.min(190,bottom-top)},
-      {kind:'focus',left:Math.max(hi+16,right-310),top,width:Math.min(310,right-hi-16),height:Math.min(190,bottom-top)}];
-    return candidates.filter(r=>r.width>=189.9 && !visible.some(o=>r.left<o.right+4&&r.left+r.width>o.left-4&&r.top<o.bottom+4&&r.top+r.height>o.top-4));
+    const candidates=[{kind:'notes',left,top,width:Math.min(300,lo-left-16),height:Math.min(190,bottom-top)},
+      {kind:'focus',left:Math.max(hi+16,right-144),top,width:Math.min(144,right-hi-16),height:Math.min(190,bottom-top)}];
+    return candidates.filter(r=>r.width>=(r.kind==='focus'?143.9:179.9) && !visible.some(o=>r.left<o.right+4&&r.left+r.width>o.left-4&&r.top<o.bottom+4&&r.top+r.height>o.top-4));
   }
-  // All three columns yield space; mini side cards keep the last usable range.
-  const centerWidth = width => width>=712?Math.max(300,Math.min(720,Math.round((width-32)*720/1370),width-412)):null;
+  // Keep a readable search column; side tools yield first, then use compact access.
+  const centerWidth = width => width>=872?Math.max(480,Math.min(720,Math.round((width-32)*.58),width-392)):null;
   const density = (width,height=190) => width<240||height<174?'mini':width<300||height<186?'small':'roomy';
   function notePage(paths,offset,size){
     size=size===1?1:2;offset=Math.max(0,Math.min(Math.floor(offset/size)*size,Math.floor(Math.max(0,paths.length-1)/size)*size));
     return {offset,paths:paths.slice(offset,offset+size),page:Math.floor(offset/size)+1,pages:Math.max(1,Math.ceil(paths.length/size)),hasPrevious:offset>0,hasNext:offset+size<paths.length};
   }
+  const focusFrame=(frame,collapsed)=>collapsed?{left:frame.left+frame.width-Math.min(96,frame.width),width:Math.min(96,frame.width),height:32}:{...frame};
   const visibility = state => ({notes:state.enabled!==false&&state.notesEnabled!==false,focus:state.enabled!==false&&state.focusEnabled!==false});
   const clock = seconds => {const n=Math.max(0,Math.ceil(Number(seconds)||0));return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;};
-  return {defaultState,safePath,normalize,note,slots,clock,centerWidth,density,notePage,visibility};
+  return {defaultState,safePath,normalize,note,slots,clock,centerWidth,density,notePage,visibility,focusFrame};
 }
 
 ;(() => {
@@ -100,8 +101,6 @@ function carrotTopAreaCore() {
       const compact=root.createDiv({cls:'cta-compact',attr:{'aria-label':'随手晾晾与专注一刻'}});
       const compactNotes=button(compact,'随手晾晾：打开全部便签',()=>new CarrotStickyUI.Manager(this).open());icon(compactNotes,'sticky-note');const compactNotesText=compactNotes.createSpan();
       const compactFocus=button(compact,'专注一刻：打开计时面板',()=>this.focus.openPanel());icon(compactFocus,'timer');const compactFocusText=compactFocus.createSpan();
-      const focusMore=()=>view.containerEl?.querySelector('.view-header .view-actions .view-action:last-child')?.focus({preventScroll:true});
-      const hideArea=(parent,kind,name,cls,glyph='eye-off')=>{const el=button(parent,'隐藏'+name+'（可从主页更多选项恢复）',async()=>{if(el.disabled)return;el.disabled=true;try{await this.setAreaVisible(kind,false);focusMore();}finally{el.disabled=!!this.loadError;}},'cta-hide-area '+cls);if(glyph)icon(el,glyph);return el;};
       let disposed=false,raf=0,readToken=0,busy=false,lastTaskPath='',cachedTitle='',adaptiveWidth=null,notesPerPage=2;
       const wire=left.createDiv({cls:'cta-wire'});wire.innerHTML='<svg viewBox="0 0 340 32" preserveAspectRatio="none" fill="none" aria-hidden="true"><path d="M7 7Q170 42 333 7" stroke="currentColor" stroke-width="1.8" vector-effect="non-scaling-stroke"/><path d="M7 7Q170 42 333 7" stroke="var(--cta-rope-highlight)" stroke-width=".5" stroke-dasharray="2 4"/><circle cx="7" cy="7" r="3.5" fill="var(--cta-wood-border)"/></svg>';
       const foldNotes=button(left,'向左收起便签（再点展开）',async()=>{if(foldNotes.disabled)return;foldNotes.disabled=true;try{await this.update(s=>({...s,notesCollapsed:!s.notesCollapsed}));foldNotes.focus({preventScroll:true});}finally{foldNotes.disabled=!!this.loadError;}},'cta-hide-area cta-fold-notes');
@@ -114,13 +113,21 @@ function carrotTopAreaCore() {
       const prev=button(noteTools,'上一组便签',()=>{this.offset=Math.max(0,this.offset-notesPerPage);this.refresh();});icon(prev,'chevron-left');
       const page=noteTools.createSpan({cls:'csn-top-page'});
       const next=button(noteTools,'下一组便签',()=>{this.offset+=notesPerPage;this.refresh();});icon(next,'chevron-right');
-      const focusMount=this.focus.mount(right);const hideFocus=hideArea(right.querySelector('.cta-focus-head'),'focus','专注一刻','cta-hide-focus');
+      const focusBody=right.createDiv({cls:'cta-focus-content'}),focusMount=this.focus.mount(focusBody);let foldingFocus=false;
+      const foldFocus=button(right,'收起专注卡片（计时继续）',async()=>{if(foldingFocus||foldFocus.disabled)return;foldingFocus=true;foldFocus.disabled=true;try{await this.update(s=>({...s,focusCollapsed:!s.focusCollapsed}));}finally{foldingFocus=false;foldFocus.disabled=!!this.loadError;foldFocus.focus({preventScroll:true});}},'cta-fold-focus');
+      foldFocus.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.stopPropagation();foldFocus.click();}});
+      const foldGlyph=foldFocus.createSpan({cls:'cta-rope-reel',attr:{'aria-hidden':'true'}}),foldClock=foldFocus.createSpan({cls:'cta-fold-clock'});
+
       const tick=()=>{
-        foldNotes.disabled=hideFocus.disabled=!!this.loadError;
+        foldNotes.disabled=!!this.loadError;foldFocus.disabled=foldingFocus||!!this.loadError;
         focusMount.tick();compactNotesText.textContent=`随手晾晾 · ${this.state.notes.length+this.state.archived.length}`;
         let snapshot;try{snapshot=carrotFocusMomentCore().snapshot(this.focus.state(),this.focus.plugin()?.settings,this.focus.nextDuration);}catch{}
         compactFocusText.textContent='专注一刻'+(snapshot?.time!=null?' · '+core.clock(snapshot.time):'');
         compactFocus.title=(snapshot?.label||'打开 TaskNotes 计时面板')+'；点击打开完整计时面板';
+        const focusCollapsed=this.state.focusCollapsed===true;right.toggleClass('is-folded',focusCollapsed);focusBody.inert=focusCollapsed;focusBody.setAttribute('aria-hidden',String(focusCollapsed));
+        foldClock.hidden=!focusCollapsed;foldClock.textContent=snapshot?.time!=null?core.clock(snapshot.time):'--:--';
+        O.setIcon(foldGlyph,focusCollapsed?'chevrons-left':'chevrons-right');foldFocus.setAttribute('aria-expanded',String(!focusCollapsed));
+        const foldFocusLabel=focusCollapsed?`展开专注一刻 · ${snapshot?.label||'状态暂不可用'} · ${foldClock.textContent}`:'向右收起专注卡片（计时继续）';foldFocus.setAttribute('aria-label',foldFocusLabel);foldFocus.title=foldFocusLabel;right.dataset.focusPhase=snapshot?.phase||'unavailable';
       };
       let dragCleanups=[];
       const notes=async()=>{
@@ -172,9 +179,10 @@ function carrotTopAreaCore() {
           const spaces=core.slots({left:bounds.left,right:bounds.right,top:base.top+6,bottom:end.top-12,obstacles:[...center,...others]}).filter(slot=>shown[slot.kind]);
           left.hidden=true;right.hidden=true;
           for(const slot of spaces){
-            const panel=slot.kind==='notes'?left:right,mode=core.density(slot.width,slot.height),height=Math.min(slot.height,mode==='mini'?160:mode==='small'?176:190);
-            panel.hidden=false;panel.dataset.density=mode;panel.style.setProperty('--cta-ui-scale',String(Math.max(.82,Math.min(1,slot.width/(slot.kind==='notes'?340:310)))));
-            Object.assign(panel.style,{left:`${slot.left-base.left}px`,top:`${slot.top-base.top}px`,width:`${slot.width}px`,height:`${height}px`});
+            const panel=slot.kind==='notes'?left:right,initialDensity=core.density(slot.width,slot.height),height=Math.min(slot.height,slot.kind==='focus'?152:initialDensity==='mini'?160:initialDensity==='small'?176:190),mode=core.density(slot.width,height);
+            panel.hidden=false;panel.dataset.density=mode;panel.style.setProperty('--cta-ui-scale',String(Math.max(.82,Math.min(1,slot.width/(slot.kind==='notes'?300:240)))));
+            const frame=slot.kind==='focus'?core.focusFrame({left:slot.left,width:slot.width,height},this.state.focusCollapsed):{left:slot.left,width:slot.width,height};
+            Object.assign(panel.style,{left:`${frame.left-base.left}px`,top:`${slot.top-base.top}px`,width:`${frame.width}px`,height:`${frame.height}px`});
             if(slot.kind==='notes'){const size=mode==='mini'?1:2;if(size!==notesPerPage){notesPerPage=size;notes();}}
           }
           root.dataset.available=spaces.map(x=>x.kind).join(',');

@@ -2811,7 +2811,7 @@ function carrotTaskFocus() {
 /* Pure note semantics and a single-writer, compare-before-rename sidecar store. */
 function carrotStickyNotesCore() {
   const safePath=p=>typeof p==='string'&&p.endsWith('.md')&&!p.startsWith('/')&&!p.startsWith('.')&&!p.includes('\\')&&!p.split('/').some(x=>!x||x==='..'||x==='.')&&!/[\u0000-\u001f]/.test(p);
-  const defaults=()=>({version:2,enabled:true,notesEnabled:true,focusEnabled:true,notesCollapsed:false,notes:[],archived:[],drafts:{},focusPath:''});
+  const defaults=()=>({version:2,enabled:true,notesEnabled:true,focusEnabled:true,notesCollapsed:false,focusCollapsed:false,notes:[],archived:[],drafts:{},focusPath:''});
   function normalize(input){
     if(!input||![1,2].includes(input.version)||!Array.isArray(input.notes))throw new Error('便签存储版本或格式无法读取；原文件已保留');
     const list=value=>{if(!Array.isArray(value)||value.some(p=>!safePath(p)))throw new Error('便签索引包含无效路径；原文件已保留');return [...new Set(value)];};
@@ -2819,7 +2819,7 @@ function carrotStickyNotesCore() {
     const drafts=input.drafts||{};
     if(!drafts||typeof drafts!=='object'||Array.isArray(drafts)||Object.entries(drafts).some(([k,v])=>(k!=='new'&&!safePath(k))||!v||typeof v.title!=='string'||typeof v.body!=='string'||(v.baseText!=null&&typeof v.baseText!=='string')))throw new Error('便签草稿格式无法读取；原文件已保留');
     if(input.focusPath&& !safePath(input.focusPath))throw new Error('专注任务路径格式无效；原文件已保留');
-    return {...input,version:2,enabled:input.enabled!==false,notesEnabled:input.notesEnabled!==false,focusEnabled:input.focusEnabled!==false,notesCollapsed:input.notesCollapsed===true,notes,archived,drafts,focusPath:input.focusPath||''};
+    return {...input,version:2,enabled:input.enabled!==false,notesEnabled:input.notesEnabled!==false,focusEnabled:input.focusEnabled!==false,notesCollapsed:input.notesCollapsed===true,focusCollapsed:input.focusCollapsed===true,notes,archived,drafts,focusPath:input.focusPath||''};
   }
   function split(raw){
     raw=String(raw);const start='<!-- carrot-sticky:start -->',end='<!-- carrot-sticky:end -->';
@@ -3056,6 +3056,8 @@ var CarrotFocusMoment=(()=>{
     constructor(focus){super(focus.owner.plugin.app);this.focus=focus;}
     onOpen(){
       this.modalEl.addClass('cfm-actions');this.titleEl.setText('专注一刻 · 更多操作');const f=this.focus,v=C.snapshot(f.state(),f.plugin()?.settings,f.nextDuration);
+      button(this.contentEl,'换任务',()=>{this.close();f.pickTask();}).disabled=f.busy;
+      if(v.session)button(this.contentEl,v.rest?'结束休息':'结束本轮',()=>{this.close();new Confirm(f,v.rest?'结束当前休息？':'结束当前一轮？','stop').open();}).disabled=f.busy;
       if(!v.session&&v.phase!=='completed'){
         this.contentEl.createEl('p',{text:'下一轮时长：只影响本轮，不修改 TaskNotes 的全局设置。',cls:'csn-hint'});
         const row=this.contentEl.createDiv({cls:'cfm-duration-options'});
@@ -3111,32 +3113,33 @@ var CarrotFocusMoment=(()=>{
     }
     refresh(){for(const v of this.views)v.tick();}
     mount(root){
+      root.addClass('cfm-ticket');
       const head=root.createDiv({cls:'cta-focus-head'});head.createSpan({text:'专注一刻'});const label=head.createSpan({cls:'cfm-phase'});
-      const task=button(root,'选择任务',()=>{const state=this.state(),path=state?.currentSession?.type==='work'?state.currentSession.taskPath:state?.currentSession?null:this.owner.state.focusPath;return path?this.owner.openFile(path):this.pickTask();},'cta-task');
-      const timerRow=root.createDiv({cls:'cta-timer-row'}),time=timerRow.createSpan({cls:'cta-time'}),main=button(timerRow,'开始专注',()=>this.main(),'cta-play cfm-main');
+      const face=root.createDiv({cls:'cfm-ticket-face'}),dial=face.createDiv({cls:'cfm-ticket-dial'}),time=dial.createSpan({cls:'cta-time'}),detail=face.createDiv({cls:'cfm-ticket-detail'});
+      const task=button(detail,'选择任务',()=>{const state=this.state(),path=state?.currentSession?.type==='work'?state.currentSession.taskPath:state?.currentSession?null:this.owner.state.focusPath;return path?this.owner.openFile(path):this.pickTask();},'cta-task');
+      const controls=detail.createDiv({cls:'cfm-ticket-controls'}),main=button(controls,'开始专注',()=>this.main(),'cta-play cfm-main'),more=button(controls,'更多专注操作：换任务、结束和时长',()=>new Actions(this).open(),'cfm-ticket-more');icon(more,'ellipsis');
       const bottom=root.createDiv({cls:'cta-focus-bottom'}),track=bottom.createDiv({cls:'cta-progress'}),fill=track.createDiv({cls:'cta-progress-fill'}),duration=bottom.createSpan({cls:'cta-status'});
-      const hint=root.createDiv({cls:'cfm-hint',attr:{role:'status'}}),foot=root.createDiv({cls:'cta-focus-foot'});
-      const choose=button(foot,'换任务',()=>this.pickTask());const end=button(foot,'结束本轮',()=>new Confirm(this,this.state()?.currentSession?.type==='work'?'结束当前一轮？':'结束当前休息？','stop').open());
-      const more=button(foot,'更多专注操作',()=>new Actions(this).open());more.textContent='更多…';
+      const hint=root.createDiv({cls:'cfm-hint',attr:{role:'status'}});
       let disposed=false,token=0;
       const tick=async()=>{
         if(disposed||!root.isConnected)return;const current=++token,tn=this.plugin();let state,v;
-        try{state=tn?.pomodoroService?.getState?.();v=C.snapshot(state,tn?.settings,this.nextDuration);}catch(e){label.textContent='状态读取失败';hint.textContent='请打开 TaskNotes 检查';main.disabled=true;return;}
-        label.textContent=tn&&!state?'加载中…':v.label;time.textContent=v.time===null?'--:--':C.clock(v.time);
-        main.textContent=v.button;main.setAttribute('aria-label',v.button);main.title=v.button;main.disabled=this.busy||v.zero;
-        const total=v.duration||v.time||0;fill.style.width=`${v.session&&total>0?Math.min(100,Math.max(0,(1-v.time/total)*100)):0}%`;
+        try{state=tn?.pomodoroService?.getState?.();v=C.snapshot(state,tn?.settings,this.nextDuration);}catch(e){label.textContent='状态读取失败';hint.textContent='请打开 TaskNotes 检查';root.dataset.warning='true';main.disabled=true;return;}
+        label.textContent=tn&&!state?'加载中…':v.phase==='idle'?'待开始':v.label;label.title=v.label;root.dataset.warning='false';time.textContent=v.time===null?'--:--':C.clock(v.time);
+        icon(main,!tn?'settings':v.phase==='completed'?'coffee':state?.isRunning?'pause':'play');main.setAttribute('aria-label',v.button);main.title=v.button;main.disabled=this.busy||v.zero;
+        const total=v.duration||v.time||0,progress=v.session&&total>0?Math.min(100,Math.max(0,(1-v.time/total)*100)):0;fill.style.width=`${progress}%`;dial.style.setProperty('--cfm-turn',`${progress*3.6}deg`);dial.title=v.label+' · '+time.textContent;
         duration.textContent=v.session?`${v.detail||'本轮'} ${total?C.clock(total):'--:--'}`:v.time===null?'':`本轮 ${C.clock(v.time)}`;
-        end.hidden=!v.session;end.textContent=v.rest?'结束休息':'结束本轮';end.setAttribute('aria-label',end.textContent);choose.disabled=this.busy;end.disabled=this.busy;more.disabled=this.busy;
+        more.disabled=this.busy;
         root.toggleClass('cta-is-running',!!state?.isRunning);
         const path=v.session?v.path:this.owner.state.focusPath;
         if(v.rest){task.textContent=v.detail+'，让眼睛放松一下';task.setAttribute('aria-label','打开 TaskNotes 休息面板');task.onclick=null;hint.textContent=v.zero?'等待 TaskNotes 结算休息':'休息计时由 TaskNotes 同步';task.disabled=true;this.currentTitle=v.detail;return;}
         task.disabled=false;
         if(v.session&&!path){task.textContent='未绑定任务的专注';task.disabled=true;hint.textContent=v.zero?'等待 TaskNotes 完成本轮':'可在原生面板查看此会话';this.currentTitle=task.textContent;return;}
-        if(!tn){task.textContent='启用 TaskNotes 后开始专注';task.setAttribute('aria-label','查看 TaskNotes 设置');hint.textContent='便签仍可独立使用';return;}
+        if(!tn){root.dataset.warning='true';task.textContent='启用 TaskNotes 后开始专注';task.setAttribute('aria-label','查看 TaskNotes 设置');hint.textContent='便签仍可独立使用';return;}
         if(!path){task.textContent='选择一件要做的事 ↗';task.setAttribute('aria-label','选择专注任务');hint.textContent=v.phase==='completed'?'开始休息会使用 TaskNotes 配置的时长':'点击选择，或用“换任务”搜索';return;}
         const meta=await this.meta(path);if(disposed||current!==token)return;
         const file=this.owner.plugin.app.vault.getAbstractFileByPath(path),valid=C.taskValid(meta,tn.settings);
         task.textContent=meta?.title||file?.basename||'原任务已移除';task.setAttribute('aria-label','打开原任务：'+task.textContent);task.title=task.textContent;this.currentTitle=task.textContent;
+        if(!valid){root.dataset.warning='true';label.textContent=v.session?'任务已变更':'请重新选任务';}
         hint.textContent=v.zero?'等待 TaskNotes 完成本轮':!valid?(v.session?'原任务已完成、归档或移除；当前计时仍保留':'原任务已完成、归档或移除，请换任务'):v.phase==='completed'?'本轮已完成，任务状态保持不变':this.nextDuration?'单次时长已选，开始时生效':'与 TaskNotes 同步';
       };
       const view={tick};this.views.add(view);tick();const onVisible=()=>tick();document.addEventListener('visibilitychange',onVisible);window.addEventListener('focus',onVisible);
@@ -3156,20 +3159,21 @@ function carrotTopAreaCore() {
     const center=visible.filter(r=>r.kind==='center');
     if (!center.length || bottom-top<154) return [];
     const lo=Math.min(...center.map(r=>r.left)),hi=Math.max(...center.map(r=>r.right));
-    const candidates=[{kind:'notes',left,top,width:Math.min(340,lo-left-16),height:Math.min(190,bottom-top)},
-      {kind:'focus',left:Math.max(hi+16,right-310),top,width:Math.min(310,right-hi-16),height:Math.min(190,bottom-top)}];
-    return candidates.filter(r=>r.width>=189.9 && !visible.some(o=>r.left<o.right+4&&r.left+r.width>o.left-4&&r.top<o.bottom+4&&r.top+r.height>o.top-4));
+    const candidates=[{kind:'notes',left,top,width:Math.min(300,lo-left-16),height:Math.min(190,bottom-top)},
+      {kind:'focus',left:Math.max(hi+16,right-144),top,width:Math.min(144,right-hi-16),height:Math.min(190,bottom-top)}];
+    return candidates.filter(r=>r.width>=(r.kind==='focus'?143.9:179.9) && !visible.some(o=>r.left<o.right+4&&r.left+r.width>o.left-4&&r.top<o.bottom+4&&r.top+r.height>o.top-4));
   }
-  // All three columns yield space; mini side cards keep the last usable range.
-  const centerWidth = width => width>=712?Math.max(300,Math.min(720,Math.round((width-32)*720/1370),width-412)):null;
+  // Keep a readable search column; side tools yield first, then use compact access.
+  const centerWidth = width => width>=872?Math.max(480,Math.min(720,Math.round((width-32)*.58),width-392)):null;
   const density = (width,height=190) => width<240||height<174?'mini':width<300||height<186?'small':'roomy';
   function notePage(paths,offset,size){
     size=size===1?1:2;offset=Math.max(0,Math.min(Math.floor(offset/size)*size,Math.floor(Math.max(0,paths.length-1)/size)*size));
     return {offset,paths:paths.slice(offset,offset+size),page:Math.floor(offset/size)+1,pages:Math.max(1,Math.ceil(paths.length/size)),hasPrevious:offset>0,hasNext:offset+size<paths.length};
   }
+  const focusFrame=(frame,collapsed)=>collapsed?{left:frame.left+frame.width-Math.min(96,frame.width),width:Math.min(96,frame.width),height:32}:{...frame};
   const visibility = state => ({notes:state.enabled!==false&&state.notesEnabled!==false,focus:state.enabled!==false&&state.focusEnabled!==false});
   const clock = seconds => {const n=Math.max(0,Math.ceil(Number(seconds)||0));return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;};
-  return {defaultState,safePath,normalize,note,slots,clock,centerWidth,density,notePage,visibility};
+  return {defaultState,safePath,normalize,note,slots,clock,centerWidth,density,notePage,visibility,focusFrame};
 }
 
 ;(() => {
@@ -3247,8 +3251,6 @@ function carrotTopAreaCore() {
       const compact=root.createDiv({cls:'cta-compact',attr:{'aria-label':'随手晾晾与专注一刻'}});
       const compactNotes=button(compact,'随手晾晾：打开全部便签',()=>new CarrotStickyUI.Manager(this).open());icon(compactNotes,'sticky-note');const compactNotesText=compactNotes.createSpan();
       const compactFocus=button(compact,'专注一刻：打开计时面板',()=>this.focus.openPanel());icon(compactFocus,'timer');const compactFocusText=compactFocus.createSpan();
-      const focusMore=()=>view.containerEl?.querySelector('.view-header .view-actions .view-action:last-child')?.focus({preventScroll:true});
-      const hideArea=(parent,kind,name,cls,glyph='eye-off')=>{const el=button(parent,'隐藏'+name+'（可从主页更多选项恢复）',async()=>{if(el.disabled)return;el.disabled=true;try{await this.setAreaVisible(kind,false);focusMore();}finally{el.disabled=!!this.loadError;}},'cta-hide-area '+cls);if(glyph)icon(el,glyph);return el;};
       let disposed=false,raf=0,readToken=0,busy=false,lastTaskPath='',cachedTitle='',adaptiveWidth=null,notesPerPage=2;
       const wire=left.createDiv({cls:'cta-wire'});wire.innerHTML='<svg viewBox="0 0 340 32" preserveAspectRatio="none" fill="none" aria-hidden="true"><path d="M7 7Q170 42 333 7" stroke="currentColor" stroke-width="1.8" vector-effect="non-scaling-stroke"/><path d="M7 7Q170 42 333 7" stroke="var(--cta-rope-highlight)" stroke-width=".5" stroke-dasharray="2 4"/><circle cx="7" cy="7" r="3.5" fill="var(--cta-wood-border)"/></svg>';
       const foldNotes=button(left,'向左收起便签（再点展开）',async()=>{if(foldNotes.disabled)return;foldNotes.disabled=true;try{await this.update(s=>({...s,notesCollapsed:!s.notesCollapsed}));foldNotes.focus({preventScroll:true});}finally{foldNotes.disabled=!!this.loadError;}},'cta-hide-area cta-fold-notes');
@@ -3261,13 +3263,21 @@ function carrotTopAreaCore() {
       const prev=button(noteTools,'上一组便签',()=>{this.offset=Math.max(0,this.offset-notesPerPage);this.refresh();});icon(prev,'chevron-left');
       const page=noteTools.createSpan({cls:'csn-top-page'});
       const next=button(noteTools,'下一组便签',()=>{this.offset+=notesPerPage;this.refresh();});icon(next,'chevron-right');
-      const focusMount=this.focus.mount(right);const hideFocus=hideArea(right.querySelector('.cta-focus-head'),'focus','专注一刻','cta-hide-focus');
+      const focusBody=right.createDiv({cls:'cta-focus-content'}),focusMount=this.focus.mount(focusBody);let foldingFocus=false;
+      const foldFocus=button(right,'收起专注卡片（计时继续）',async()=>{if(foldingFocus||foldFocus.disabled)return;foldingFocus=true;foldFocus.disabled=true;try{await this.update(s=>({...s,focusCollapsed:!s.focusCollapsed}));}finally{foldingFocus=false;foldFocus.disabled=!!this.loadError;foldFocus.focus({preventScroll:true});}},'cta-fold-focus');
+      foldFocus.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.stopPropagation();foldFocus.click();}});
+      const foldGlyph=foldFocus.createSpan({cls:'cta-rope-reel',attr:{'aria-hidden':'true'}}),foldClock=foldFocus.createSpan({cls:'cta-fold-clock'});
+
       const tick=()=>{
-        foldNotes.disabled=hideFocus.disabled=!!this.loadError;
+        foldNotes.disabled=!!this.loadError;foldFocus.disabled=foldingFocus||!!this.loadError;
         focusMount.tick();compactNotesText.textContent=`随手晾晾 · ${this.state.notes.length+this.state.archived.length}`;
         let snapshot;try{snapshot=carrotFocusMomentCore().snapshot(this.focus.state(),this.focus.plugin()?.settings,this.focus.nextDuration);}catch{}
         compactFocusText.textContent='专注一刻'+(snapshot?.time!=null?' · '+core.clock(snapshot.time):'');
         compactFocus.title=(snapshot?.label||'打开 TaskNotes 计时面板')+'；点击打开完整计时面板';
+        const focusCollapsed=this.state.focusCollapsed===true;right.toggleClass('is-folded',focusCollapsed);focusBody.inert=focusCollapsed;focusBody.setAttribute('aria-hidden',String(focusCollapsed));
+        foldClock.hidden=!focusCollapsed;foldClock.textContent=snapshot?.time!=null?core.clock(snapshot.time):'--:--';
+        O.setIcon(foldGlyph,focusCollapsed?'chevrons-left':'chevrons-right');foldFocus.setAttribute('aria-expanded',String(!focusCollapsed));
+        const foldFocusLabel=focusCollapsed?`展开专注一刻 · ${snapshot?.label||'状态暂不可用'} · ${foldClock.textContent}`:'向右收起专注卡片（计时继续）';foldFocus.setAttribute('aria-label',foldFocusLabel);foldFocus.title=foldFocusLabel;right.dataset.focusPhase=snapshot?.phase||'unavailable';
       };
       let dragCleanups=[];
       const notes=async()=>{
@@ -3319,9 +3329,10 @@ function carrotTopAreaCore() {
           const spaces=core.slots({left:bounds.left,right:bounds.right,top:base.top+6,bottom:end.top-12,obstacles:[...center,...others]}).filter(slot=>shown[slot.kind]);
           left.hidden=true;right.hidden=true;
           for(const slot of spaces){
-            const panel=slot.kind==='notes'?left:right,mode=core.density(slot.width,slot.height),height=Math.min(slot.height,mode==='mini'?160:mode==='small'?176:190);
-            panel.hidden=false;panel.dataset.density=mode;panel.style.setProperty('--cta-ui-scale',String(Math.max(.82,Math.min(1,slot.width/(slot.kind==='notes'?340:310)))));
-            Object.assign(panel.style,{left:`${slot.left-base.left}px`,top:`${slot.top-base.top}px`,width:`${slot.width}px`,height:`${height}px`});
+            const panel=slot.kind==='notes'?left:right,initialDensity=core.density(slot.width,slot.height),height=Math.min(slot.height,slot.kind==='focus'?152:initialDensity==='mini'?160:initialDensity==='small'?176:190),mode=core.density(slot.width,height);
+            panel.hidden=false;panel.dataset.density=mode;panel.style.setProperty('--cta-ui-scale',String(Math.max(.82,Math.min(1,slot.width/(slot.kind==='notes'?300:240)))));
+            const frame=slot.kind==='focus'?core.focusFrame({left:slot.left,width:slot.width,height},this.state.focusCollapsed):{left:slot.left,width:slot.width,height};
+            Object.assign(panel.style,{left:`${frame.left-base.left}px`,top:`${slot.top-base.top}px`,width:`${frame.width}px`,height:`${frame.height}px`});
             if(slot.kind==='notes'){const size=mode==='mini'?1:2;if(size!==notesPerPage){notesPerPage=size;notes();}}
           }
           root.dataset.available=spaces.map(x=>x.kind).join(',');
@@ -3416,7 +3427,7 @@ function carrotTopAreaCore() {
 ;(() => {
   const { Notice, Modal, Setting, TFile, normalizePath } = re;
   const base = 'Carrot Home 示例';
-  const defaults = {"title":"我的秘密基地","showTitle":true,"logo":"","logoIcon":"","tabIcon":"","themeColorTarget":"none","showSearch":true,"searchPlaceholder":"Search or command","showNewNoteButton":true,"newNoteButtonMode":"newNote","searchContents":true,"searchEngine":"builtin","backgroundKind":"default","backgroundValue":"","backgroundOpacity":0.35,"backgroundBlur":2,"backgroundLayout":"full","bannerHeight":220,"bannerFade":true,"bannerFullWidth":false,"openOnStartup":true,"replaceNewTabs":true,"focusSearchOnOpen":false,"liveRefresh":false,"mobileSearchOnly":false,"showMobileActionBar":true,"mobileActionButtons":[{"id":"action-new-note","label":"新建笔记","icon":"plus","type":"command","target":"carrot-home:new-note"},{"id":"action-new-drawing","label":"新建白板","icon":"pen-tool","type":"command","target":"carrot-home:new-drawing"},{"id":"action-record-voice","label":"录音","icon":"mic","type":"command","target":"carrot-home:record-voice"},{"id":"action-daily-note","label":"今日日记","icon":"calendar","type":"command","target":"carrot-home:open-daily-note"}],"disableExternalCalls":false,"openIn":"tab","openInOverrides":{"link":"default","search":"default","card":"default","newNote":"default"},"openFromOutside":"same","lowPower":false,"lowPowerBackgroundColor":"#4a4459","compact":false,"arrangeButtonVisibility":"always","dashboardSwitcherVisibility":"always","cardOpacity":0.5,"cardBlur":7,"cardRadius":14,"cardBorderWidth":1,"hiddenFilters":["bases","presentations","3d","spreadsheets"],"dashboards":[{"id":"dash-mtcqviyf-8009","name":"Home","cards":[{"kind":"clock","title":"","x":0,"y":0,"w":12,"h":2,"id":"card-mtcqx5it-0-2039","fx":0,"fw":0.20125,"fy":0,"fh":118,"clock":{"mode":"digital","hourFormat":"24"},"commands":[]},{"kind":"tasks","title":"Tasks","x":6,"y":2,"w":6,"h":5,"tasks":{"source":"tasknotes","layout":"kanban","kanbanDoneColumns":["done"],"kanbanOrder":["open","in-progress","done","none"],"kanbanColumnSort":{"done":{"reverse":true}}},"id":"card-mtcqx5it-2-1584","fx":0.21140939597315436,"fw":0.7885906040268457,"fy":0,"fh":625},{"kind":"schedule","title":"Calendar","x":0,"y":7,"w":8,"h":6,"id":"card-mtcqx5it-3-9810","fx":0,"fw":0.20125,"fy":117,"fh":358,"schedule":{"taskNotes":{"enabled":true,"scheduled":true,"due":true,"recurring":true,"timeblocks":true,"completed":true,"archived":false,"allowComplete":true,"subscriptions":true,"colorBy":"status"}}},{"kind":"recent","title":"Recent","count":10,"x":8,"y":7,"w":4,"h":4,"id":"card-mtcqx5it-4-7418","fx":0,"fw":0.20067796610169492,"fy":641,"fh":454},{"kind":"leaf","title":"项目甘特图","leafView":{"viewType":"hearth-gantt-view","hideHeader":true},"x":0,"y":13,"w":12,"h":6,"id":"card-hearth-gantt-1787917216","fx":0.21143847487001732,"fw":0.7885615251299827,"fy":641,"fh":571},{"kind":"bookmarks","title":"Bookmarks","x":0,"y":19,"w":4,"h":3,"id":"card-mtcqx5it-6-9500","fx":0,"fw":0.20125,"fy":491,"fh":134}],"fitToPage":false}],"activeDashboardId":"dash-mtcqviyf-8009","pinnedCards":[],"gridColumns":12,"rowHeight":92,"favorites":[],"fitToPage":true,"taskNotesStatusField":"status","taskNotesDueField":"due","taskNotesPriorityField":"priority","taskNotesDoneValue":"done","taskFieldsEnabled":false,"taskFields":[],"customFileIcons":true,"iconizeIconProperty":"icon","maxWidth":1600,"lastSeenVersion":"2.1.2","setupStatus":"done","homeToolbarActions":[{"id":"daily-note","label":"打开/创建今天的日记","icon":"calendar-days","commandId":"daily-notes","enabled":true},{"id":"tasknotes-pomodoro","label":"打开 TaskNotes 番茄钟","icon":"timer","commandId":"tasknotes:open-pomodoro-view","enabled":true},{"id":"command-mtjkyvmx","label":"TaskNotes: 打开日历视图","icon":"circle-check-big","commandId":"tasknotes:open-advanced-calendar-view","enabled":false}]};
+  const defaults = {"title":"我的秘密基地","showTitle":true,"logo":"","logoIcon":"","tabIcon":"","themeColorTarget":"none","showSearch":true,"searchPlaceholder":"Search or command","showNewNoteButton":true,"newNoteButtonMode":"newNote","searchContents":true,"searchEngine":"builtin","backgroundKind":"default","backgroundValue":"","backgroundOpacity":0.35,"backgroundBlur":2,"backgroundLayout":"full","bannerHeight":220,"bannerFade":true,"bannerFullWidth":false,"openOnStartup":true,"replaceNewTabs":true,"focusSearchOnOpen":false,"liveRefresh":false,"mobileSearchOnly":false,"showMobileActionBar":true,"mobileActionButtons":[{"id":"action-new-note","label":"新建笔记","icon":"plus","type":"command","target":"carrot-home:new-note"},{"id":"action-new-drawing","label":"新建白板","icon":"pen-tool","type":"command","target":"carrot-home:new-drawing"},{"id":"action-record-voice","label":"录音","icon":"mic","type":"command","target":"carrot-home:record-voice"},{"id":"action-daily-note","label":"今日日记","icon":"calendar","type":"command","target":"carrot-home:open-daily-note"}],"disableExternalCalls":false,"openIn":"tab","openInOverrides":{"link":"default","search":"default","card":"default","newNote":"default"},"openFromOutside":"same","lowPower":false,"lowPowerBackgroundColor":"#4a4459","compact":false,"arrangeButtonVisibility":"always","dashboardSwitcherVisibility":"always","cardOpacity":0.5,"cardBlur":7,"cardRadius":14,"cardBorderWidth":1,"hiddenFilters":["bases","presentations","3d","spreadsheets"],"dashboards":[{"id":"dash-mtcqviyf-8009","name":"Home","cards":[{"kind":"clock","title":"","x":0,"y":0,"w":12,"h":2,"id":"card-mtcqx5it-0-2039","fx":0,"fw":0.20125,"fy":0,"fh":118,"clock":{"mode":"digital","hourFormat":"24"},"commands":[]},{"kind":"tasks","title":"Tasks","x":6,"y":2,"w":6,"h":5,"tasks":{"source":"tasknotes","layout":"kanban","kanbanDoneColumns":["done"],"kanbanOrder":["open","in-progress","done","none"],"kanbanColumnSort":{"done":{"reverse":true}}},"id":"card-mtcqx5it-2-1584","fx":0.21140939597315436,"fw":0.7885906040268457,"fy":0,"fh":625},{"kind":"schedule","title":"Calendar","x":0,"y":7,"w":8,"h":6,"id":"card-mtcqx5it-3-9810","fx":0,"fw":0.20125,"fy":117,"fh":358,"schedule":{"taskNotes":{"enabled":true,"scheduled":true,"due":true,"recurring":true,"timeblocks":true,"completed":true,"archived":false,"allowComplete":true,"subscriptions":true,"colorBy":"status"}}},{"kind":"recent","title":"Recent","count":10,"x":8,"y":7,"w":4,"h":4,"id":"card-mtcqx5it-4-7418","fx":0,"fw":0.20067796610169492,"fy":641,"fh":454},{"kind":"leaf","title":"项目甘特图","leafView":{"viewType":"hearth-gantt-view","hideHeader":true},"x":0,"y":13,"w":12,"h":6,"id":"card-hearth-gantt-1787917216","fx":0.21143847487001732,"fw":0.7885615251299827,"fy":641,"fh":571},{"kind":"bookmarks","title":"Bookmarks","x":0,"y":19,"w":4,"h":3,"id":"card-mtcqx5it-6-9500","fx":0,"fw":0.20125,"fy":491,"fh":134}],"fitToPage":false}],"activeDashboardId":"dash-mtcqviyf-8009","pinnedCards":[],"gridColumns":12,"rowHeight":92,"favorites":[],"fitToPage":true,"taskNotesStatusField":"status","taskNotesDueField":"due","taskNotesPriorityField":"priority","taskNotesDoneValue":"done","taskFieldsEnabled":false,"taskFields":[],"customFileIcons":true,"iconizeIconProperty":"icon","maxWidth":1600,"lastSeenVersion":"2.1.3","setupStatus":"done","homeToolbarActions":[{"id":"daily-note","label":"打开/创建今天的日记","icon":"calendar-days","commandId":"daily-notes","enabled":true},{"id":"tasknotes-pomodoro","label":"打开 TaskNotes 番茄钟","icon":"timer","commandId":"tasknotes:open-pomodoro-view","enabled":true},{"id":"command-mtjkyvmx","label":"TaskNotes: 打开日历视图","icon":"circle-check-big","commandId":"tasknotes:open-advanced-calendar-view","enabled":false}]};
   const entries = [{"path":"Carrot Home 示例/开始使用.md","content":"# 欢迎来到 Carrot Home\n\n这是一套可离线使用的示例工作台。示例均为虚构，可编辑、勾选或删除。\n\n- Home：左侧时钟、日历、书签和最近笔记；右侧任务看板与项目甘特图。\n- 项目甘特图的新增项目入口可创建制作流程。\n- 双击/点击任务可按 TaskNotes 设置编辑或打开笔记；拖到其他看板列可修改状态。\n- 日期在首次启用时自动设为当天附近。以后重启不会重置任务，也不会补回你删除的示例。\n- 新任务默认放在 `Carrot Home 示例/任务`；可在 TaskNotes 设置里更改目录。\n- 这些示例只在本地读写；云日历、微信读书等账号功能需使用者自行配置，不附任何原作者凭据。\n\n## 快速试用\n\n1. 将“脚本-第一支示例视频”从进行中拖到已完成。\n2. 打开项目甘特图，调整一项任务日期。\n3. 在项目甘特图里新建自己的项目和任务。\n\n[[Carrot Home 示例/项目/第一支示例视频]] · [[Carrot Home 示例/项目/整理个人知识库]]\n\n## 布局与快捷功能\n\n默认板块位置、大小、间距和颜色来自原工作台。标题改为“我的秘密基地”；顶部 Resojot 与 Thino 图标已去掉。原布局随窗口宽度自适应，内容较长时向下滚动。\n\n移动端的画板按钮在未安装 Excalidraw 时使用 Obsidian 自带白板；录音使用核心录音机。日记、书签、白板、录音机和数据库需要开启对应核心插件。\n\n## 示例与真实工作\n\n删除示例前，可以先建立自己的项目与任务。所有示例都集中在本目录。工作台查询会读取库内带 task 标签的任务和 type: video 的项目；用于已有库时，也会显示符合这些字段的真实内容。\n"},{"path":"Carrot Home 示例/项目/第一支示例视频.md","content":"---\ntitle: 第一支示例视频\ncarrotProject: true\nproject_workflow: video\nproject_status: active\ntype: video\nvideo_stage: script\ntarget_publish: {{DAY:7}}\ntags: [示例项目]\n---\n\n# 第一支示例视频\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"},{"path":"Carrot Home 示例/项目/整理个人知识库.md","content":"---\ntitle: 整理个人知识库\ncarrotProject: true\nproject_workflow: general\nproject_status: active\ntags: [示例项目]\n---\n\n# 整理个人知识库\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"},{"path":"Carrot Home 示例/项目/已发布示例视频.md","content":"---\ntitle: 已发布示例视频\ncarrotProject: true\nproject_workflow: video\nproject_status: completed\ntype: video\nvideo_stage: published\ntarget_publish: {{DAY:-1}}\npublished_date: {{DAY:-1}}\ntags: [示例项目]\n---\n\n# 已发布示例视频\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"},{"path":"Carrot Home 示例/任务/选题-第一支示例视频.md","content":"---\ntitle: 选题-第一支示例视频\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:-1}}\ndue: {{DAY:0}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ncompletedDate: {{DAY:0}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/脚本-第一支示例视频.md","content":"---\ntitle: 脚本-第一支示例视频\nstatus: in-progress\npriority: high\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:1}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/拍摄-第一支示例视频.md","content":"---\ntitle: 拍摄-第一支示例视频\nstatus: open\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:1}}\ndue: {{DAY:2}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/剪辑-第一支示例视频.md","content":"---\ntitle: 剪辑-第一支示例视频\nstatus: open\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:2}}\ndue: {{DAY:4}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/发布-第一支示例视频.md","content":"---\ntitle: 发布-第一支示例视频\nstatus: open\npriority: low\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:5}}\ndue: {{DAY:6}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/整理收件箱.md","content":"---\ntitle: 整理收件箱\nstatus: in-progress\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:2}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/建立三个常用分类.md","content":"---\ntitle: 建立三个常用分类\nstatus: open\npriority: low\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:2}}\ndue: {{DAY:4}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/阅读工作台使用说明.md","content":"---\ntitle: 阅读工作台使用说明\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:0}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ncompletedDate: {{DAY:0}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/发布-已发布示例视频.md","content":"---\ntitle: 发布-已发布示例视频\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:-2}}\ndue: {{DAY:-1}}\nprojects:\n  - \"[[Carrot Home 示例/项目/已发布示例视频]]\"\ncompletedDate: {{DAY:-1}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/想到一个新点子，稍后整理.md","content":"---\ntitle: 想到一个新点子，稍后整理\nstatus: none\npriority: none\ntags: [task, CarrotHome示例]\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/选题/示例-分享我的工作台.md","content":"---\ntitle: 示例-分享我的工作台\ntype: video\nvideo_stage: idea\nproject_status: active\ntags: [选题]\n---\n\n# 分享我的工作台\n\n## 为什么想做\n\n把一个好用的小方法讲清楚。\n\n## 提纲与脚本\n\n- 遇到了什么问题\n- 我的解决方法\n- 观众可以马上试的一个动作\n"}];
   const freshSettings = saved => saved == null || (typeof saved === 'object' && !Array.isArray(saved) && !Object.keys(saved).length);
   const dir = plugin => plugin.manifest.dir || `${plugin.app.vault.configDir}/plugins/carrot-home`;
