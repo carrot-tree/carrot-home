@@ -38,18 +38,18 @@ test('deferred Obsidian home views do not abort header mounting on reopen',()=>{
   assert.doesNotThrow(()=>sandbox.TestTopArea.prototype.mount.call({},view));
 });
 test('search has a readable floor while side cards yield and cap their size',()=>{
- assert.equal(core.centerWidth(1600),720);assert.equal(core.centerWidth(872),480);assert.equal(core.centerWidth(871),null);
+ assert.equal(core.centerWidth(1600),640);assert.equal(core.centerWidth(872),480);assert.equal(core.centerWidth(871),null);
  let previousSide=Infinity;
  for(const width of [1400,1200,1000,900,880,872]){
   const center=core.centerWidth(width),lo=(width-center)/2;
   const slots=core.slots({left:0,right:width,top:0,bottom:200,obstacles:[{left:lo,right:lo+center,top:0,bottom:190,kind:'center'}]});
-  assert.equal(slots.length,2);assert.ok(center>=480);assert.ok(slots.every(s=>s.width>=(s.kind==='focus'?143.9:179.9)));assert.ok(slots.find(s=>s.kind==='focus').width===144);assert.ok(slots.find(s=>s.kind==='notes').width<=300);
+  assert.equal(slots.length,2);assert.ok(center>=480);assert.ok(slots.every(s=>s.width>=(s.kind==='focus'?167.9:179.9)));assert.ok(slots.find(s=>s.kind==='focus').width<=260);assert.ok(slots.find(s=>s.kind==='notes').width<=340);
   assert.ok(slots[0].width<=previousSide);previousSide=slots[0].width;
  }
  assert.ok(core.centerWidth(1000)>core.centerWidth(900));
 });
 test('side density changes layout before folding, including short header room',()=>{
- assert.equal(core.density(340),'roomy');assert.equal(core.density(280),'small');assert.equal(core.density(220),'mini');
+ assert.equal(core.density(340),'roomy');assert.equal(core.density(280),'small');assert.equal(core.density(219),'mini');
  assert.equal(core.density(340,160),'mini');assert.equal(core.density(340,180),'small');
 });
 test('switching between one- and two-note pages retains order and every note',()=>{
@@ -79,3 +79,73 @@ test('existing pane menu retains its own items and offers recovery while both ar
 });
 
 test('folded focus keeps the original right edge without changing expanded geometry',()=>{for(const width of [190,240,310]){const frame={left:700,width,height:190};assert.deepEqual(plain(core.focusFrame(frame,false)),frame);const small=core.focusFrame(frame,true);assert.equal(small.left+small.width,frame.left+frame.width);assert.equal(small.width,96);assert.equal(small.height,32);assert.equal(frame.width,width);}});
+
+
+test('focus is an independent upper-right dial and yields to protected controls',()=>{
+ const center={left:300,right:1000,top:80,bottom:240,kind:'center'};
+ for(const right of [1200,1600,2200]){
+  const focus=core.slots({left:0,right,top:12,bottom:300,obstacles:[center]}).find(s=>s.kind==='focus');
+  assert.equal(focus.left+focus.width,right);assert.equal(focus.top,12);assert.ok(focus.width>=180&&focus.width<=260);
+ }
+ const blocked=core.slots({left:0,right:1600,top:12,bottom:300,obstacles:[center,{left:1500,right:1600,top:12,bottom:60,kind:'protected'}]});
+ assert.equal(blocked.some(s=>s.kind==='focus'),false);
+});
+
+test('notes never extend beyond the left card below, including at different widths',()=>{
+ for(const cardRight of [180,190,195,220,280,360]){
+  const notes=core.slots({left:20,right:1600,top:0,bottom:300,notesRight:cardRight,sideCenterY:160,obstacles:[{left:450,right:1150,top:80,bottom:280,kind:'center'}]}).find(s=>s.kind==='notes');
+  if(cardRight-20<169.9){assert.equal(notes,undefined);continue;}
+  assert.equal(notes.left,20);assert.ok(notes.left+notes.width<=cardRight);assert.ok(notes.top>=0&&notes.top+notes.height<=300);
+ }
+ const constrained=core.slots({left:20,right:1600,top:0,bottom:300,notesRight:700,obstacles:[{left:260,right:1150,top:80,bottom:280,kind:'center'}]}).find(s=>s.kind==='notes');
+ assert.equal(constrained.left+constrained.width,244);
+});
+
+test('title and search remain on the page center axis at every width',()=>{
+ for(const width of [872,1000,1240,1600,2200]){
+  const band=core.headerComposition({left:80,right:80+width});assert.equal(band.left-80,80+width-band.right);assert.equal(band.right-band.left,width);
+  assert.equal(band.leftWidth,band.rightWidth);assert.equal(band.centerShift,0);
+  assert.equal(band.leftWidth+band.centerWidth+band.rightWidth+band.gap*2,band.right-band.left);
+  const middleLeft=(160+width-band.centerWidth)/2+band.centerShift;assert.equal(middleLeft,band.left+band.leftWidth+band.gap);
+ }
+ const center={left:400,right:1000,top:80,bottom:300,kind:'center'},slots=core.slots({left:80,right:1320,top:70,bottom:380,obstacles:[center],sideCenterY:220,gap:24});
+ const notes=slots.find(s=>s.kind==='notes'),focus=slots.find(s=>s.kind==='focus');
+ assert.equal(notes.top+notes.height/2,220);assert.equal(focus.top,70);assert.equal(focus.left+focus.width,1320);
+});
+
+
+test('wide note area remains readable while preserving the page center',()=>{
+ const layout=core.headerComposition({left:0,right:1600});assert.ok(layout.leftWidth>=340);assert.equal(layout.leftWidth,layout.rightWidth);
+ assert.equal(core.headerComposition({left:0,right:800}).centerShift,0);
+ const lo=layout.left+layout.leftWidth+layout.gap,hi=lo+layout.centerWidth;
+ const notes=core.slots({left:layout.left,right:layout.right,top:0,bottom:220,gap:layout.gap,obstacles:[{left:lo,right:hi,top:0,bottom:180,kind:'center'}]}).find(s=>s.kind==='notes');
+ assert.equal(notes.width,340);assert.equal(notes.left,layout.left);
+});
+
+
+test('two notes appear from 220px while narrower or short areas retain one and every entry',()=>{
+ assert.equal(core.noteColumns(219,190),1);assert.equal(core.noteColumns(220,190),2);assert.equal(core.noteColumns(240,176),2);assert.equal(core.noteColumns(340,160),1);
+ const paths=Array.from({length:39},(_,i)=>'notes/'+i+'.md');for(const size of [1,2]){const all=[];for(let offset=0;offset<paths.length;offset+=size)all.push(...core.notePage(paths,offset,size).paths);assert.deepEqual(plain(all),paths);}
+});
+
+// Real content sizes constrain both widgets; neither can invade the centered header.
+test('focus grows to a comparable visual size while respecting narrow layouts',()=>{
+ for(const width of [872,1064,1284,1484]){
+  const cw=core.centerWidth(width),left=(width-cw)/2;
+  const spaces=core.slots({left:0,right:width,top:0,bottom:260,notesRight:width*.20125,sideCenterY:150,obstacles:[{left,right:left+cw,top:45,bottom:245,kind:'center'}]});
+  const notes=spaces.find(s=>s.kind==='notes'),focus=spaces.find(s=>s.kind==='focus'),dial=core.dialSize(focus);
+  assert.ok(focus.left>=left+cw+16);assert.equal(focus.left+focus.width,width);assert.ok(focus.top+focus.height<=260);
+  assert.ok(dial>=140&&dial<=190);if(width>=1064)assert.ok(dial>=180);
+  const paperArea=(notes.width-16)*120,dialArea=Math.PI*(dial/2)**2;
+  assert.ok(dialArea/paperArea>.65&&dialArea/paperArea<1.4);
+ }
+});
+
+test('focus folds horizontally at the expanded handle height, not the dial midpoint',()=>{
+ for(const width of [180,214,260]){
+  const original={left:700,top:140,width,height:214},folded=core.focusFrame(original,true);
+  assert.equal(folded.top+folded.height/2,original.top+6+28/2);
+  assert.equal(folded.left+folded.width,original.left+original.width);
+  assert.deepEqual(plain(core.focusFrame(original,false)),original);
+ }
+});

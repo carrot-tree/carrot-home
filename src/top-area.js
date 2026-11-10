@@ -4,26 +4,34 @@ function carrotTopAreaCore() {
   const defaultState=sticky.defaults;
   const safePath=sticky.safePath,normalize=sticky.normalize;
   const note=(text,fallback)=>{const p=sticky.split(text);return {title:sticky.display(p,fallback),excerpt:p.body};};
-  function slots({left,right,top,bottom,obstacles}) {
+  function slots({left,right,top,bottom,obstacles,notesRight,sideCenterY,gap=16}) {
     const visible=obstacles.filter(r=>r.right>r.left&&r.bottom>r.top&&r.bottom>top&&r.top<bottom);
     const center=visible.filter(r=>r.kind==='center');
     if (!center.length || bottom-top<154) return [];
     const lo=Math.min(...center.map(r=>r.left)),hi=Math.max(...center.map(r=>r.right));
-    const candidates=[{kind:'notes',left,top,width:Math.min(300,lo-left-16),height:Math.min(190,bottom-top)},
-      {kind:'focus',left:Math.max(hi+16,right-144),top,width:Math.min(144,right-hi-16),height:Math.min(190,bottom-top)}];
-    return candidates.filter(r=>r.width>=(r.kind==='focus'?143.9:179.9) && !visible.some(o=>r.left<o.right+4&&r.left+r.width>o.left-4&&r.top<o.bottom+4&&r.top+r.height>o.top-4));
+    const noteHeight=Math.min(190,bottom-top),noteTop=Number.isFinite(sideCenterY)?Math.max(top,Math.min(bottom-noteHeight,sideCenterY-noteHeight/2)):top;
+    const noteLimit=Number.isFinite(notesRight)?Math.min(notesRight,lo-gap):lo-gap;
+    const noteWidth=Math.min(340,noteLimit-left);
+    const focusWidth=Math.min(260,Math.max(180,noteWidth),right-hi-gap),focusHeight=Math.min(214,focusWidth-8,bottom-top);
+    const candidates=[{kind:'notes',left,top:noteTop,width:noteWidth,height:noteHeight},
+      {kind:'focus',left:right-focusWidth,top,width:focusWidth,height:focusHeight}];
+    return candidates.filter(r=>r.width>=(r.kind==='focus'?167.9:169.9) && !visible.some(o=>r.left<o.right+4&&r.left+r.width>o.left-4&&r.top<o.bottom+4&&r.top+r.height>o.top-4));
   }
   // Keep a readable search column; side tools yield first, then use compact access.
-  const centerWidth = width => width>=872?Math.max(480,Math.min(720,Math.round((width-32)*.58),width-392)):null;
-  const density = (width,height=190) => width<240||height<174?'mini':width<300||height<186?'small':'roomy';
+  const headerBand=({left,right})=>({left,right,gap:right-left>=1120?24:16});
+  const centerWidth = width => width>=872?Math.max(480,Math.min(640,Math.round((Math.min(width,1240)-32)*.56),width-392)):null;
+  const headerComposition=({left,right})=>{const band=headerBand({left,right}),middle=centerWidth(right-left);if(middle===null)return {...band,centerWidth:null,centerShift:0};const sideWidth=(right-left-middle)/2-band.gap;return {...band,centerWidth:middle,leftWidth:sideWidth,rightWidth:sideWidth,centerShift:0};};
+  const density = (width,height=190) => width<220||height<174?'mini':width<300||height<186?'small':'roomy';
+  const noteColumns=(width,height=190)=>width>=220&&density(width,height)!=='mini'?2:1;
   function notePage(paths,offset,size){
     size=size===1?1:2;offset=Math.max(0,Math.min(Math.floor(offset/size)*size,Math.floor(Math.max(0,paths.length-1)/size)*size));
     return {offset,paths:paths.slice(offset,offset+size),page:Math.floor(offset/size)+1,pages:Math.max(1,Math.ceil(paths.length/size)),hasPrevious:offset>0,hasNext:offset+size<paths.length};
   }
-  const focusFrame=(frame,collapsed)=>collapsed?{left:frame.left+frame.width-Math.min(96,frame.width),width:Math.min(96,frame.width),height:32}:{...frame};
+  const dialSize=frame=>Math.max(0,Math.min(190,frame.width-32,frame.height-24));
+  const focusFrame=(frame,collapsed)=>collapsed?{...frame,left:frame.left+frame.width-Math.min(96,frame.width),...(Number.isFinite(frame.top)?{top:frame.top+4}:{}),width:Math.min(96,frame.width),height:32}:{...frame};
   const visibility = state => ({notes:state.enabled!==false&&state.notesEnabled!==false,focus:state.enabled!==false&&state.focusEnabled!==false});
   const clock = seconds => {const n=Math.max(0,Math.ceil(Number(seconds)||0));return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;};
-  return {defaultState,safePath,normalize,note,slots,clock,centerWidth,density,notePage,visibility,focusFrame};
+  return {defaultState,safePath,normalize,note,slots,clock,headerBand,headerComposition,centerWidth,density,noteColumns,notePage,visibility,focusFrame,dialSize};
 }
 
 ;(() => {
@@ -101,7 +109,7 @@ function carrotTopAreaCore() {
       const compact=root.createDiv({cls:'cta-compact',attr:{'aria-label':'随手晾晾与专注一刻'}});
       const compactNotes=button(compact,'随手晾晾：打开全部便签',()=>new CarrotStickyUI.Manager(this).open());icon(compactNotes,'sticky-note');const compactNotesText=compactNotes.createSpan();
       const compactFocus=button(compact,'专注一刻：打开计时面板',()=>this.focus.openPanel());icon(compactFocus,'timer');const compactFocusText=compactFocus.createSpan();
-      let disposed=false,raf=0,readToken=0,busy=false,lastTaskPath='',cachedTitle='',adaptiveWidth=null,notesPerPage=2;
+      let disposed=false,raf=0,readToken=0,busy=false,lastTaskPath='',cachedTitle='',adaptiveWidth=null,adaptiveShift=null,notesPerPage=2;
       const wire=left.createDiv({cls:'cta-wire'});wire.innerHTML='<svg viewBox="0 0 340 32" preserveAspectRatio="none" fill="none" aria-hidden="true"><path d="M7 7Q170 42 333 7" stroke="currentColor" stroke-width="1.8" vector-effect="non-scaling-stroke"/><path d="M7 7Q170 42 333 7" stroke="var(--cta-rope-highlight)" stroke-width=".5" stroke-dasharray="2 4"/><circle cx="7" cy="7" r="3.5" fill="var(--cta-wood-border)"/></svg>';
       const foldNotes=button(left,'向左收起便签（再点展开）',async()=>{if(foldNotes.disabled)return;foldNotes.disabled=true;try{await this.update(s=>({...s,notesCollapsed:!s.notesCollapsed}));foldNotes.focus({preventScroll:true});}finally{foldNotes.disabled=!!this.loadError;}},'cta-hide-area cta-fold-notes');
       const reel=foldNotes.createSpan({cls:'cta-rope-reel',attr:{'aria-hidden':'true'}});O.setIcon(reel,'chevrons-left');
@@ -126,7 +134,7 @@ function carrotTopAreaCore() {
         compactFocus.title=(snapshot?.label||'打开 TaskNotes 计时面板')+'；点击打开完整计时面板';
         const focusCollapsed=this.state.focusCollapsed===true;right.toggleClass('is-folded',focusCollapsed);focusBody.inert=focusCollapsed;focusBody.setAttribute('aria-hidden',String(focusCollapsed));
         foldClock.hidden=!focusCollapsed;foldClock.textContent=snapshot?.time!=null?core.clock(snapshot.time):'--:--';
-        O.setIcon(foldGlyph,focusCollapsed?'chevrons-left':'chevrons-right');foldFocus.setAttribute('aria-expanded',String(!focusCollapsed));
+        O.setIcon(foldGlyph,focusCollapsed?'chevron-left':'chevron-right');foldFocus.setAttribute('aria-expanded',String(!focusCollapsed));
         const foldFocusLabel=focusCollapsed?`展开专注一刻 · ${snapshot?.label||'状态暂不可用'} · ${foldClock.textContent}`:'向右收起专注卡片（计时继续）';foldFocus.setAttribute('aria-label',foldFocusLabel);foldFocus.title=foldFocusLabel;right.dataset.focusPhase=snapshot?.phase||'unavailable';
       };
       let dragCleanups=[];
@@ -162,13 +170,13 @@ function carrotTopAreaCore() {
         if(disposed)return;{
           if(this.dragging){this.pendingRefresh=true;return;}
           const shown=core.visibility(this.state);root.hidden=(!shown.notes&&!shown.focus)||view.arrangeMode;
-          const bounds=inner.getBoundingClientRect();
-          const desiredWidth=root.hidden?null:core.centerWidth(bounds.width);
-          if(desiredWidth!==adaptiveWidth){
-            adaptiveWidth=desiredWidth;header.toggleClass('cta-adaptive-center',desiredWidth!==null);
-            if(desiredWidth===null){header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-title-fit');}
+          const bounds=inner.getBoundingClientRect(),band=core.headerComposition(bounds);
+          const desiredWidth=root.hidden?null:band.centerWidth,desiredShift=root.hidden||!header.classList.contains('is-title-align-center')?0:band.centerShift;
+          if(desiredWidth!==adaptiveWidth||desiredShift!==adaptiveShift){
+            adaptiveWidth=desiredWidth;adaptiveShift=desiredShift;header.toggleClass('cta-adaptive-center',desiredWidth!==null);
+            if(desiredWidth===null){header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-center-shift');header.style.removeProperty('--cta-title-fit');}
             else {
-              header.style.setProperty('--cta-center-width',`${desiredWidth}px`);header.style.setProperty('--cta-title-fit','1');
+              header.style.setProperty('--cta-center-width',`${desiredWidth}px`);header.style.setProperty('--cta-center-shift',`${desiredShift}px`);header.style.setProperty('--cta-title-fit','1');
               const title=header.querySelector(':scope > .hearth-title'),text=title?.querySelector('.hearth-title-text');
               if(text){const textWidth=text.scrollWidth,extra=[...title.children].filter(e=>e!==text).reduce((n,e)=>n+e.getBoundingClientRect().width,0)+Math.max(0,title.children.length-1)*(parseFloat(getComputedStyle(title).columnGap)||0);const fit=Math.min(1,Math.max(.4,(desiredWidth-extra)/Math.max(1,textWidth)));header.style.setProperty('--cta-title-fit',String(fit));}
             }
@@ -176,14 +184,19 @@ function carrotTopAreaCore() {
           const base=header.getBoundingClientRect(),end=board.getBoundingClientRect();
           const center=[...header.querySelectorAll(':scope > .hearth-title,:scope > .hearth-search-wrap')].map(el=>({...rect(el),kind:'center'}));
           const others=[...content.querySelectorAll('.hearth-card,.hearth-dash-switcher-zone,.hearth-arrange-button,.hearth-home-toolbar')].map(el=>({...rect(el),kind:'protected'}));
-          const spaces=core.slots({left:bounds.left,right:bounds.right,top:base.top+6,bottom:end.top-12,obstacles:[...center,...others]}).filter(slot=>shown[slot.kind]);
+          const sideCenterY=(Math.min(...center.map(r=>r.top))+Math.max(...center.map(r=>r.bottom)))/2;
+          // Align the paper rack with the first original left-column card, not the search column.
+          const below=others.filter(r=>r.kind==='protected'&&r.top>=end.top-4&&Math.abs(r.left-bounds.left)<4).sort((a,b)=>a.top-b.top)[0];
+          const nav=content.querySelector('.hearth-dash-switcher-zone')?.getBoundingClientRect();
+          const top=nav?.height?nav.bottom+12:base.top+6;
+          const spaces=core.slots({left:band.left,right:band.right,gap:band.gap,top,bottom:end.top-12,obstacles:[...center,...others],sideCenterY,notesRight:below?.right}).filter(slot=>shown[slot.kind]);
           left.hidden=true;right.hidden=true;
           for(const slot of spaces){
-            const panel=slot.kind==='notes'?left:right,initialDensity=core.density(slot.width,slot.height),height=Math.min(slot.height,slot.kind==='focus'?152:initialDensity==='mini'?160:initialDensity==='small'?176:190),mode=core.density(slot.width,height);
-            panel.hidden=false;panel.dataset.density=mode;panel.style.setProperty('--cta-ui-scale',String(Math.max(.82,Math.min(1,slot.width/(slot.kind==='notes'?300:240)))));
-            const frame=slot.kind==='focus'?core.focusFrame({left:slot.left,width:slot.width,height},this.state.focusCollapsed):{left:slot.left,width:slot.width,height};
-            Object.assign(panel.style,{left:`${frame.left-base.left}px`,top:`${slot.top-base.top}px`,width:`${frame.width}px`,height:`${frame.height}px`});
-            if(slot.kind==='notes'){const size=mode==='mini'?1:2;if(size!==notesPerPage){notesPerPage=size;notes();}}
+            const panel=slot.kind==='notes'?left:right,initialDensity=core.density(slot.width,slot.height),height=Math.min(slot.height,slot.kind==='focus'?slot.height:initialDensity==='mini'?160:initialDensity==='small'?176:190),mode=core.density(slot.width,height);
+            panel.hidden=false;panel.dataset.density=mode;if(slot.kind==='focus')panel.style.setProperty('--cfm-dial-size',`${core.dialSize({width:slot.width,height})}px`);panel.style.setProperty('--cta-ui-scale',String(Math.max(.82,Math.min(1,slot.width/(slot.kind==='notes'?340:240)))));
+            const frame=slot.kind==='focus'?core.focusFrame({left:slot.left,top:slot.top,width:slot.width,height},this.state.focusCollapsed):{left:slot.left,top:slot.top+(slot.height-height)/2,width:slot.width,height};
+            Object.assign(panel.style,{left:`${frame.left-base.left}px`,top:`${frame.top-base.top}px`,width:`${frame.width}px`,height:`${frame.height}px`});
+            if(slot.kind==='notes'){const size=core.noteColumns(slot.width,height);left.dataset.pageSize=String(size);if(size!==notesPerPage){notesPerPage=size;notes();}}
           }
           root.dataset.available=spaces.map(x=>x.kind).join(',');
           compactNotes.hidden=!shown.notes||!left.hidden;compactFocus.hidden=!shown.focus||!right.hidden;compact.hidden=(compactNotes.hidden&&compactFocus.hidden)||root.hidden;
@@ -198,11 +211,11 @@ function carrotTopAreaCore() {
         }
       };
       const mounted={root,notes,tick,place};this.mounts.add(mounted);notes();tick();place();
-      const observer=new ResizeObserver(place);observer.observe(header);observer.observe(inner);observer.observe(board);
+      const observer=new ResizeObserver(place);observer.observe(header);observer.observe(inner);observer.observe(board);for(const el of header.querySelectorAll(':scope > .hearth-title,:scope > .hearth-search-wrap'))observer.observe(el);
       const layoutRef=this.plugin.app.workspace.on('layout-change',place),activeRef=this.plugin.app.workspace.on('active-leaf-change',()=>{place();tick();});
       window.addEventListener('resize',place);
-      const interval=window.setInterval(()=>{if(root.isConnected)tick();},1000);
-      const cleanup=()=>{if(disposed)return;disposed=true;readToken++;cancelAnimationFrame(raf);observer.disconnect();clearInterval(interval);this.plugin.app.workspace.offref(layoutRef);this.plugin.app.workspace.offref(activeRef);window.removeEventListener('resize',place);dragCleanups.forEach(f=>f());focusMount.cleanup();this.mounts.delete(mounted);header.removeClass('cta-adaptive-center');header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-title-fit');root.remove();};
+      const interval=window.setInterval(()=>{if(root.isConnected){tick();place();}},1000);
+      const cleanup=()=>{if(disposed)return;disposed=true;readToken++;cancelAnimationFrame(raf);observer.disconnect();clearInterval(interval);this.plugin.app.workspace.offref(layoutRef);this.plugin.app.workspace.offref(activeRef);window.removeEventListener('resize',place);dragCleanups.forEach(f=>f());focusMount.cleanup();this.mounts.delete(mounted);header.removeClass('cta-adaptive-center');header.style.removeProperty('--cta-center-width');header.style.removeProperty('--cta-center-shift');header.style.removeProperty('--cta-title-fit');root.remove();};
       mounted.cleanup=cleanup;view.renderChild?.register(cleanup);
     }
     remount(){for(const m of [...this.mounts])m.cleanup();for(const leaf of this.plugin.app.workspace.getLeavesOfType('carrot-home-view'))this.mount(leaf.view);}

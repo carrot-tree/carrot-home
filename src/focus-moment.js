@@ -94,7 +94,9 @@ var CarrotFocusMoment=(()=>{
       root.addClass('cfm-ticket');
       const head=root.createDiv({cls:'cta-focus-head'});head.createSpan({text:'专注一刻'});const label=head.createSpan({cls:'cfm-phase'});
       const face=root.createDiv({cls:'cfm-ticket-face'}),dial=face.createDiv({cls:'cfm-ticket-dial'}),time=dial.createSpan({cls:'cta-time'}),detail=face.createDiv({cls:'cfm-ticket-detail'});
-      const task=button(detail,'选择任务',()=>{const state=this.state(),path=state?.currentSession?.type==='work'?state.currentSession.taskPath:state?.currentSession?null:this.owner.state.focusPath;return path?this.owner.openFile(path):this.pickTask();},'cta-task');
+      const taskRow=detail.createDiv({cls:'cfm-task-row'});
+      const task=button(taskRow,'选择任务',()=>{const state=this.state(),path=state?.currentSession?.type==='work'?state.currentSession.taskPath:state?.currentSession?null:this.owner.state.focusPath;return path?this.owner.openFile(path):this.pickTask();},'cta-task');
+      const switchTask=button(taskRow,'切换任务',()=>this.pickTask(),'cfm-switch-task');icon(switchTask,'arrow-right-left');
       const controls=detail.createDiv({cls:'cfm-ticket-controls'}),main=button(controls,'开始专注',()=>this.main(),'cta-play cfm-main'),more=button(controls,'更多专注操作：换任务、结束和时长',()=>new Actions(this).open(),'cfm-ticket-more');icon(more,'ellipsis');
       const bottom=root.createDiv({cls:'cta-focus-bottom'}),track=bottom.createDiv({cls:'cta-progress'}),fill=track.createDiv({cls:'cta-progress-fill'}),duration=bottom.createSpan({cls:'cta-status'});
       const hint=root.createDiv({cls:'cfm-hint',attr:{role:'status'}});
@@ -106,7 +108,7 @@ var CarrotFocusMoment=(()=>{
         icon(main,!tn?'settings':v.phase==='completed'?'coffee':state?.isRunning?'pause':'play');main.setAttribute('aria-label',v.button);main.title=v.button;main.disabled=this.busy||v.zero;
         const total=v.duration||v.time||0,progress=v.session&&total>0?Math.min(100,Math.max(0,(1-v.time/total)*100)):0;fill.style.width=`${progress}%`;dial.style.setProperty('--cfm-turn',`${progress*3.6}deg`);dial.title=v.label+' · '+time.textContent;
         duration.textContent=v.session?`${v.detail||'本轮'} ${total?C.clock(total):'--:--'}`:v.time===null?'':`本轮 ${C.clock(v.time)}`;
-        more.disabled=this.busy;
+        more.disabled=switchTask.disabled=this.busy;
         root.toggleClass('cta-is-running',!!state?.isRunning);
         const path=v.session?v.path:this.owner.state.focusPath;
         if(v.rest){task.textContent=v.detail+'，让眼睛放松一下';task.setAttribute('aria-label','打开 TaskNotes 休息面板');task.onclick=null;hint.textContent=v.zero?'等待 TaskNotes 结算休息':'休息计时由 TaskNotes 同步';task.disabled=true;this.currentTitle=v.detail;return;}
