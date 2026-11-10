@@ -38,7 +38,7 @@ test('deferred Obsidian home views do not abort header mounting on reopen',()=>{
   assert.doesNotThrow(()=>sandbox.TestTopArea.prototype.mount.call({},view));
 });
 test('search has a readable floor while side cards yield and cap their size',()=>{
- assert.equal(core.centerWidth(1600),640);assert.equal(core.centerWidth(872),480);assert.equal(core.centerWidth(871),null);
+ assert.equal(core.centerWidth(1600),640);assert.equal(core.centerWidth(872),480);assert.equal(core.centerWidth(600),null);
  let previousSide=Infinity;
  for(const width of [1400,1200,1000,900,880,872]){
   const center=core.centerWidth(width),lo=(width-center)/2;
@@ -94,7 +94,7 @@ test('focus is an independent upper-right dial and yields to protected controls'
 test('notes never extend beyond the left card below, including at different widths',()=>{
  for(const cardRight of [180,190,195,220,280,360]){
   const notes=core.slots({left:20,right:1600,top:0,bottom:300,notesRight:cardRight,sideCenterY:160,obstacles:[{left:450,right:1150,top:80,bottom:280,kind:'center'}]}).find(s=>s.kind==='notes');
-  if(cardRight-20<169.9){assert.equal(notes,undefined);continue;}
+  if(cardRight-20<135.9){assert.equal(notes,undefined);continue;}
   assert.equal(notes.left,20);assert.ok(notes.left+notes.width<=cardRight);assert.ok(notes.top>=0&&notes.top+notes.height<=300);
  }
  const constrained=core.slots({left:20,right:1600,top:0,bottom:300,notesRight:700,obstacles:[{left:260,right:1150,top:80,bottom:280,kind:'center'}]}).find(s=>s.kind==='notes');
@@ -110,7 +110,7 @@ test('title and search remain on the page center axis at every width',()=>{
  }
  const center={left:400,right:1000,top:80,bottom:300,kind:'center'},slots=core.slots({left:80,right:1320,top:70,bottom:380,obstacles:[center],sideCenterY:220,gap:24});
  const notes=slots.find(s=>s.kind==='notes'),focus=slots.find(s=>s.kind==='focus');
- assert.equal(notes.top+notes.height/2,220);assert.equal(focus.top,70);assert.equal(focus.left+focus.width,1320);
+ assert.equal(notes.top+notes.height/2,220);assert.equal(focus.top+8+core.dialSize(focus)/2,220);assert.equal(focus.left+focus.width,1320);
 });
 
 
@@ -148,4 +148,29 @@ test('focus folds horizontally at the expanded handle height, not the dial midpo
   assert.equal(folded.left+folded.width,original.left+original.width);
   assert.deepEqual(plain(core.focusFrame(original,false)),original);
  }
+});
+
+// The dashboard stacks at 720px; the header intentionally retains both tools beyond that point.
+test('laptop and stacked panes retain side tools down to the dedicated compact threshold',()=>{
+ for(const width of [871,820,760,721,720,680,640,601]){
+  const cw=core.centerWidth(width),lo=(width-cw)/2;
+  const spaces=core.slots({left:0,right:width,top:0,bottom:250,notesRight:width>720?width*.20125:width,sideCenterY:150,obstacles:[{left:lo,right:lo+cw,top:40,bottom:220,kind:'center'}]});
+  assert.equal(spaces.length,2,'both tools at '+width);assert.ok(cw>=276&&cw<480);
+  for(const slot of spaces)assert.ok(slot.left+slot.width<=lo-16||slot.left>=lo+cw+16);
+ }
+ assert.equal(core.centerWidth(600),null);assert.equal(core.centerWidth(360),null);
+});
+
+test('shrinking focus dial keeps its visible center beside the title and search',()=>{
+ let previousTop=-Infinity;
+ for(const width of [1500,1200,1000,872,820,721,720,680,601]){
+  const cw=core.centerWidth(width),lo=(width-cw)/2;
+  const frame=core.slots({left:0,right:width,top:12,bottom:300,notesRight:width>720?width*.20125:width,sideCenterY:180,obstacles:[{left:lo,right:lo+cw,top:70,bottom:290,kind:'center'}]}).find(s=>s.kind==='focus');
+  assert.ok(frame,'visible at '+width);assert.equal(frame.top+8+core.dialSize(frame)/2,180);
+  assert.ok(frame.top>=previousTop,'smaller dial moves down to retain its center');previousTop=frame.top;
+  assert.ok(frame.top>=12&&frame.top+frame.height<=300);
+  const folded=core.focusFrame(frame,true);assert.equal(folded.top+16,frame.top+20);
+ }
+ const bounded=core.slots({left:0,right:1500,top:40,bottom:260,sideCenterY:300,obstacles:[{left:500,right:1000,top:70,bottom:250,kind:'center'}]}).find(s=>s.kind==='focus');
+ assert.ok(bounded.top+bounded.height<=260,'clamp to the existing header gap');
 });

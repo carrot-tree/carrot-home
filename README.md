@@ -26,9 +26,11 @@ Carrot Home 基于 [ondreu/Hearth](https://github.com/ondreu/Hearth) 定制，�
 
 “专注一刻”作为独立圆盘放在右上方，尺寸随可用空间调整。任务文字居中，旁边的小图标可快捷搜索、切换任务；结束与时长等操作保留在“…”菜单。向右收起后，真实倒计时胶囊停在右上方，点击即可展开，计时继续。
 
-标题和搜索整组保持居中；快捷分类保持方形，间距在不同布局下动态调整，放不下时横向滚动。窄屏保留紧凑入口与命令入口。便签为真实 Markdown，排序、收起、草稿和专注选择使用独立 `top-area.json`，升级时保留已有文件。功能、兼容与验证范围见 [顶部工具说明](docs/top-area.md)。
+标题和搜索整组保持居中；快捷分类保持方形，间距在不同布局下动态调整，放不下时横向滚动。下方在720px可用宽度转为单列后，顶部两侧仍保留至600px，再切换紧凑入口；命令入口始终可用。圆盘缩小时围绕圆心定位，左侧晾绳、木夹和绳端按钮组成的图案上沿与圆盘上沿对齐。便签为真实 Markdown，排序、收起、草稿和专注选择使用独立 `top-area.json`，升级时保留已有文件。功能、兼容与验证范围见 [顶部工具说明](docs/top-area.md)。
 
-![2.1.3 顶部双便签与右上方专注圆盘](docs/images/focus-dial-expanded.png)
+![2.1.4 顶部图案对齐与宽窄屏响应式布局](docs/images/header-responsive-wide.png)
+
+![打开侧边栏后仍可使用两侧工具](docs/images/header-responsive-sidebar.png)
 
 统一设置入口：**设置 → Carrot Home → 顶部工具**；区域显示与恢复也可从主页原有右上角“更多选项（…）”菜单操作。
 
@@ -64,7 +66,7 @@ Carrot Home 基于 [ondreu/Hearth](https://github.com/ondreu/Hearth) 定制，�
 3. 选择跟踪最新版本，添加后在社区插件列表启用 **Carrot Home**。
 4. 从左侧功能区或命令面板打开 **Carrot Home**。
 
-当前发布版本为 [2.1.3](https://github.com/carrot-tree/carrot-home/releases/tag/2.1.3)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
+当前发布版本为 [2.1.4](https://github.com/carrot-tree/carrot-home/releases/tag/2.1.4)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
 
 ### 按需安装配套插件
 

@@ -1,21 +1,24 @@
-Carrot Home 2.1.3 完善首页顶部的便签与专注圆盘，并修正宽度切换时的搜索和快捷分类排版。
+Carrot Home 2.1.4 优化笔记本与侧边栏场景下的顶部布局，让便签、搜索和专注圆盘协调缩放。
 
-- **便签更舒展**：宽度受下方左侧卡片约束，较早切换双张；两个木夹向相反方向轻轻倾斜。所有便签仍能顺序翻页与管理。
-- **独立专注圆盘**：移至右上方，尺寸随可用空间调整，与便签的视觉分量接近；任务文字保持居中，旁边的小图标可直接搜索、切换任务，活动会话沿用确认结束流程。
-- **向右上方收起**：圆盘向右收为真实倒计时胶囊，与展开时的收起按钮同高，点击可恢复；折叠状态保存，计时不会因此停止。
-- **宽窄屏排版修正**：标题和搜索整组保持中轴；快捷图标不被压缩，窄布局继续按可用宽度调整间距；修正搜索输入框撑出网格、覆盖新建按钮的问题。
-- 便签 Markdown、顺序、草稿、专注选择、已有导航与六卡片布局设置保持。设置和显示恢复仍在 **设置 → Carrot Home → 顶部工具** 与主页原有“…”菜单。
+- **两侧更晚退场**：下方卡片在720px可用宽度进入单列后，两侧工具继续保留，到600px才切为紧凑入口。
+- **中间同步收窄**：标题、搜索、新建笔记与分类栏按空间调整。新建按钮适时只显示图标，分类保持方形，可横向滚动。
+- **视觉重心稳定**：专注圆盘以圆心定位，缩小后不再向上漂移；左侧晾绳、木夹与绳端按钮构成的图案最上沿，与右侧圆盘上沿对齐。
+- **折叠位置稳定**：两侧收起/展开、收起后重载均保留状态与位置；不更改TaskNotes计时服务逻辑、已有卡片布局设置或便签原文。
 
-### 展开效果
+### 宽屏
 
-![双便签、相反方向木夹与右上方专注圆盘](https://raw.githubusercontent.com/carrot-tree/carrot-home/2.1.3/docs/images/focus-dial-expanded.png)
+![两侧图案上沿对齐，搜索保持居中](https://raw.githubusercontent.com/carrot-tree/carrot-home/2.1.4/docs/images/header-responsive-wide.png)
 
-### 收起效果
+### 打开侧边栏
 
-![专注圆盘向右上方收起，保留真实倒计时和展开入口](https://raw.githubusercontent.com/carrot-tree/carrot-home/2.1.3/docs/images/focus-dial-folded.png)
+![打开侧栏后两侧工具仍然可用](https://raw.githubusercontent.com/carrot-tree/carrot-home/2.1.4/docs/images/header-responsive-sidebar.png)
 
-配图来自独立 Obsidian 桌面测试库的实际插件界面，使用虚构示例内容，未使用正式笔记库截图。
+### 下方单列后顶部仍保留
 
-升级前备份插件目录，只替换 `main.js`、`manifest.json`、`styles.css` 后重载 Carrot Home；保留 `data.json`、`top-area.json`、备份及所有 Markdown。无需重启 TaskNotes。
+![较窄页面继续显示便签与专注圆盘](https://raw.githubusercontent.com/carrot-tree/carrot-home/2.1.4/docs/images/header-responsive-narrow.png)
 
-101 项自动化测试通过。本轮独立桌面实测双便签分页、任务切换入口的鼠标和键盘操作、搜索输入与取消、圆盘收起/展开及高度对齐；分别检查了图标间距的 13 档宽度和搜索／新建按钮边界的 17 档宽度。计时开始、暂停、继续和结束沿用此前真实 TaskNotes 验证的桥接；本轮未重新完成全部计时周期、移动真机、其它 TaskNotes 版本或系统休眠专项验收。
+图片均为独立Obsidian演示库中的实际插件界面，只含虚构内容。
+
+升级前备份插件目录，只替换 `main.js`、`manifest.json`、`styles.css` 并重载Carrot Home；保留 `data.json`、`top-area.json`、所有Markdown与备份，无需重启TaskNotes。
+
+103项自动化测试通过。独立Obsidian桌面环境验证响应式断点、九个分类按钮滚动与点击、中文搜索、便签管理、两侧折叠/展开及折叠后重载。未重新验收完整番茄工作/休息周期、系统休眠与移动端真机。

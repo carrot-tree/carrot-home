@@ -2008,7 +2008,11 @@ if(cfg.kanbanCollapsed?.includes(oldKey)){cfg.kanbanCollapsed=cfg.kanbanCollapse
 /* Carrot Home owns its release notes. Keep per-device acknowledgement outside
  * data.json so merely loading a new plugin version cannot rewrite layouts. */
 ;(()=>{
-const HhCarrotReleaseNotes=[{ version:"1.1.0", date:"2026-09-20", markdown:`### 本次更新
+const HhCarrotReleaseNotes=[{version:"2.1.4",date:"2026-11-10",markdown:`### 顶部布局优化
+- 打开侧栏或缩窄主页时，两侧工具继续保留至600px可用宽度；下方变单列时不再提前消失。
+- 标题与搜索同步缩放，新建笔记适时改为图标按钮，分类保持方形并支持横向滚动。
+- 专注圆盘缩放时保持视觉重心；左侧晾绳、木夹和绳端按钮的图案上沿与圆盘上沿对齐。
+- 折叠与重载保留位置和状态，不改已有卡片布局、便签原文或TaskNotes计时逻辑。`},{ version:"1.1.0", date:"2026-09-20", markdown:`### 本次更新
 - 新增内置「读书」页：12 张卡接微信读书 —— 阅读统计、我的书架（全部 / 正在读 / 已读完）、接着读、最近划线、我的想法、阅读档案、月度趋势、读最多的书、下一本读什么、读书笔记、偏好画像、读书分析。
 - 读书页不再依赖 Dataview 插件，卡片由 Carrot Home 自己渲染；点划线、想法或封面会直接跳到微信读书里对应的章节。
 - 微信读书 API Key 只存在本机 data.json。没填过时，任意一张卡里会直接出现输入框，粘贴后点「保存并刷新」即可。

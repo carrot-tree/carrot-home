@@ -15,3 +15,8 @@
 ## 2.1.3 专注圆盘
 
 `focus-dial-expanded.png` 与 `focus-dial-folded.png` 来自独立“计时签测试库”的真实 Obsidian 1.15.0 插件界面，使用虚构示例任务与便签，默认浅色主题；2026-11-10重新截图，展示相反方向木夹、双便签、右上方圆盘与同高收起状态。未使用正式笔记库截图，也未使用生成式模型重绘。
+
+
+## 2.1.4 顶部响应式与图案对齐
+
+`header-responsive-wide.png`、`header-responsive-sidebar.png`、`header-responsive-narrow.png` 来自独立隔离演示库中的真实Obsidian 1.13.7、Carrot Home 2.1.4、TaskNotes 4.13.1与Carrot Gantt 1.2.1。只使用虚构示例；九类筛选中的媒体文件仅为类型检测夹具，未用于播放验收。分别展示双便签、打开侧栏以及下方单列但两侧仍保留的情况。不包含正式库内容。

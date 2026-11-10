@@ -14156,6 +14156,15 @@ body.hearth-dv-resizing {
 .hearth-view .cta-adaptive-center .hearth-filter {flex:0 0 38px;min-width:38px;height:38px;box-sizing:border-box;}
 .hearth-view .cta-adaptive-center .hearth-filter-icon,.hearth-view .cta-adaptive-center .hearth-filter-icon svg {flex-shrink:0;}
 
+/* Preserve both side tools on laptop panes even after the dashboard stacks. The
+   middle's own width, rather than the full header, determines compact controls. */
+.hearth-view .hearth-header.cta-center-compact > .hearth-search-wrap {display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;gap:8px 10px;}
+.hearth-view .cta-center-compact .hearth-search-col {display:contents;}
+.hearth-view .cta-center-compact .hearth-search {grid-column:1;grid-row:1;min-width:0;}
+.hearth-view .cta-center-compact .hearth-newnote {grid-column:2;grid-row:1;width:44px;padding-inline:0;justify-content:center;}
+.hearth-view .cta-center-compact .hearth-newnote-label {display:none;}
+.hearth-view .cta-center-compact .hearth-filters {grid-column:1 / -1;grid-row:2;width:100%;padding:2px 1px 4px;}
+
 /* Side tools scale and change density with the room they actually receive. */
 .hearth-view .cta-notes button.cta-note-title {font-size:clamp(12px,calc(15px * var(--cta-ui-scale,1)),15px);}
 .hearth-view .cta-notes button.cta-note-excerpt {font-size:clamp(10px,calc(11px * var(--cta-ui-scale,1)),11px);}
