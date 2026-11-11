@@ -10408,7 +10408,7 @@ body.hearth-dv-resizing {
 .hearth-dash-btn:hover,
 .hearth-about-btn:hover,
 .hearth-modal-ribbon .hearth-ribbon-tab:hover,
-.hearth-card-picker-modal button:hover,
+.hearth-card-picker-modal button:not(.hearth-picker-rail-btn):not(.hearth-card-tile):not(.hearth-picker-foot-link):hover,
 .hearth-taskfilter-modal button:hover,
 .hearth-tasksort-modal button:hover,
 .hearth-taskfields-modal button:hover,
@@ -10479,7 +10479,7 @@ body.hearth-dv-resizing {
 .hearth-dash-modal input[type="text"],
 .hearth-dash-modal textarea,
 .hearth-dash-modal select,
-.hearth-card-picker-modal input,
+.hearth-card-picker-modal input:not(.hearth-picker-search-input),
 .hearth-taskfilter-modal input,
 .hearth-tasksort-modal input,
 .hearth-taskfields-modal input,
@@ -10498,7 +10498,7 @@ body.hearth-dv-resizing {
 .hearth-dash-modal input[type="text"]:focus,
 .hearth-dash-modal textarea:focus,
 .hearth-dash-modal select:focus,
-.hearth-card-picker-modal input:focus,
+.hearth-card-picker-modal input:not(.hearth-picker-search-input):focus,
 .hearth-taskfilter-modal input:focus,
 .hearth-tasksort-modal input:focus,
 .hearth-taskfields-modal input:focus,
@@ -10772,7 +10772,7 @@ body.hearth-dv-resizing {
 .hearth-tabbed-modal textarea,
 .hearth-tabbed-modal select,
 .hearth-tabbed-modal .dropdown,
-.hearth-card-picker-modal input,
+.hearth-card-picker-modal input:not(.hearth-picker-search-input),
 .hearth-card-picker-modal textarea,
 .hearth-card-picker-modal select,
 .hearth-taskdetail-modal input,
@@ -10800,7 +10800,7 @@ body.hearth-dv-resizing {
 .hearth-tabbed-modal input:focus,
 .hearth-tabbed-modal textarea:focus,
 .hearth-tabbed-modal select:focus,
-.hearth-card-picker-modal input:focus,
+.hearth-card-picker-modal input:not(.hearth-picker-search-input):focus,
 .hearth-card-picker-modal textarea:focus,
 .hearth-card-picker-modal select:focus,
 .hearth-taskdetail-modal input:focus,
@@ -10826,7 +10826,7 @@ body.hearth-dv-resizing {
 }
 
 .hearth-tabbed-modal button:not(.clickable-icon),
-.hearth-card-picker-modal button:not(.clickable-icon),
+.hearth-card-picker-modal button:not(.clickable-icon):not(.hearth-picker-rail-btn):not(.hearth-card-tile):not(.hearth-picker-foot-link),
 .hearth-taskdetail-modal button:not(.clickable-icon),
 .hearth-event-modal button:not(.clickable-icon),
 .hearth-sched-modal button:not(.clickable-icon),
@@ -10841,7 +10841,7 @@ body.hearth-dv-resizing {
 }
 
 .hearth-tabbed-modal button:not(.clickable-icon):hover,
-.hearth-card-picker-modal button:not(.clickable-icon):hover,
+.hearth-card-picker-modal button:not(.clickable-icon):not(.hearth-picker-rail-btn):not(.hearth-card-tile):not(.hearth-picker-foot-link):hover,
 .hearth-taskdetail-modal button:not(.clickable-icon):hover,
 .hearth-event-modal button:not(.clickable-icon):hover,
 .hearth-sched-modal button:not(.clickable-icon):hover,
@@ -14308,3 +14308,25 @@ body.hearth-dv-resizing {
 .hearth-view .cta-notes[data-page-size="1"] .cta-note-row {gap:0;}
 .hearth-view .cta-notes[data-page-size="1"] .cta-note {transform:rotate(-1deg);}
 .hearth-view .cta-notes[data-page-size="1"] .cta-note-excerpt {-webkit-line-clamp:3;}
+
+/* Keep card-picker navigation distinct from the shared dialog button skin. */
+.modal.carrot-home-modal.hearth-card-picker-modal button.hearth-picker-rail-btn {
+  background:transparent;border:1px solid transparent;color:var(--text-muted);box-shadow:none;text-align:left;
+}
+.modal.carrot-home-modal.hearth-card-picker-modal button.hearth-picker-rail-btn:hover {
+  background:var(--background-modifier-hover);color:var(--text-normal);
+}
+.modal.carrot-home-modal.hearth-card-picker-modal button.hearth-picker-rail-btn.is-active {
+  background:var(--chm-tint);border-color:var(--chm-accent);color:var(--text-normal);font-weight:650;
+  box-shadow:inset 3px 0 0 var(--chm-accent);
+}
+.modal.carrot-home-modal.hearth-card-picker-modal .modal-content .hearth-picker-search input.hearth-picker-search-input {
+  border:0;background:transparent;box-shadow:none;padding:8px 0;outline:0;min-width:0;
+}
+.modal.carrot-home-modal.hearth-card-picker-modal button.hearth-card-tile {
+  height:auto;white-space:normal;min-width:0;align-items:flex-start;text-align:left;
+}
+.modal.carrot-home-modal.hearth-card-picker-modal .hearth-picker-request-option { flex-wrap:wrap; }
+.modal.carrot-home-modal.hearth-card-picker-modal .hearth-picker-request-text { flex-basis:220px; }
+.modal.carrot-home-modal.hearth-card-picker-modal .hearth-picker-request-option button { max-width:100%;white-space:normal;height:auto; }
+.modal.carrot-home-modal.hearth-card-picker-modal .hearth-picker-request-note { overflow-wrap:anywhere; }
