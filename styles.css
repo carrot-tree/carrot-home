@@ -13838,15 +13838,15 @@ body.hearth-dv-resizing {
   background:var(--background-secondary);color:var(--text-muted);font-size:11px;line-height:18px;
 }
 .hearth-view .chw-task-actions { display:flex;align-items:center;justify-content:flex-end;gap:5px;align-self:flex-end; }
-.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro) {
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status) {
   position:static;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;
   width:28px;height:28px;min-height:28px;margin:0;padding:0;border-radius:7px;
   border:1px solid var(--carrot-task-line);background:var(--background-primary);
   color:var(--text-muted);box-shadow:none;opacity:1;cursor:pointer;
 }
-.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro):hover { background:var(--carrot-task-control-hover);color:var(--text-normal); }
-.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro):focus-visible { outline:2px solid var(--carrot-task-accent);outline-offset:2px; }
-.hearth-view .chw-pomodoro svg { width:17px;height:17px; }
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status):hover { background:var(--carrot-task-control-hover);color:var(--text-normal); }
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status):focus-visible { outline:2px solid var(--carrot-task-accent);outline-offset:2px; }
+.hearth-view :is(.chw-pomodoro,.chw-status) svg { width:17px;height:17px; }
 .hearth-view .chw-pomodoro { color:var(--text-error); }
 .hearth-view .chw-pomodoro.is-active { background:var(--carrot-task-control-hover);color:var(--text-normal);border-color:var(--carrot-task-accent); }
 .hearth-view .chw-pomodoro.is-paused { border-style:dashed; }
@@ -13911,12 +13911,12 @@ body.hearth-dv-resizing {
 .hearth-view .chw-narrow .chw-agenda .chw-task-actions { grid-row:1;align-self:start; }
 .hearth-view .chw-narrow .chw-agenda .hearth-kanban-card-meta { grid-column:2 / -1; }
 @media (pointer:coarse) {
-  .hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro) {
+  .hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status) {
     flex-basis:36px;width:36px!important;height:36px!important;min-width:36px;min-height:36px!important;
   }
   .hearth-view .chw-task-actions { gap:6px; }
 }
-.is-mobile .hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro) {
+.is-mobile .hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status) {
   flex-basis:36px;width:36px!important;height:36px!important;min-width:36px;min-height:36px!important;
 }
 @media (prefers-reduced-motion:reduce) {
@@ -14309,6 +14309,37 @@ body.hearth-dv-resizing {
 .hearth-view .cta-notes[data-page-size="1"] .cta-note {transform:rotate(-1deg);}
 .hearth-view .cta-notes[data-page-size="1"] .cta-note-excerpt {-webkit-line-clamp:3;}
 
+/* --- UI audit fixes: calendar compact cells ------------------------------- */
+.hearth-card .hearth-sched {container-type:inline-size;container-name:hearth-schedule;}
+.hearth-view .hearth-sched-chip {min-height:12px;}
+@container hearth-schedule (max-width:520px){
+  .hearth-view .hearth-sched-month:not(.is-dots) .hearth-sched-cellevents{flex-direction:row;flex-wrap:wrap;align-content:flex-start;gap:1px;padding:0;overflow:hidden;}
+  .hearth-view .hearth-sched-month:not(.is-dots) .hearth-sched-chip{position:relative;flex:0 0 100%;width:100%;height:6px;min-height:6px;max-height:6px;padding:0;border:0;border-radius:2px;background:var(--ev-color,var(--interactive-accent));}
+  .hearth-view .hearth-sched-month:not(.is-dots) .hearth-sched-chip::before{content:none;}
+  .hearth-view .hearth-sched-month:not(.is-dots) .hearth-sched-chip .hearth-sched-chiptitle,
+  .hearth-view .hearth-sched-month:not(.is-dots) .hearth-sched-chip .hearth-sched-chiptime{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden;white-space:nowrap;}
+  .hearth-view .hearth-sched-month:not(.is-dots) .hearth-sched-more{flex:0 0 auto;font-size:9px;line-height:1.2;padding:0 1px;white-space:nowrap;align-self:flex-start;}
+  .hearth-view .hearth-sched-cell{position:relative;}
+  .hearth-view .hearth-sched-cell[data-event-count] .hearth-sched-cellhead::after{content:attr(data-event-count);position:absolute;right:1px;top:0;font-size:9px;line-height:12px;font-weight:500;color:var(--text-faint);pointer-events:none;}
+}
+@media (prefers-reduced-motion:reduce){.hearth-view .hearth-sched-chip{transition:none;}}
+
+/* --- UI audit fixes: archived sticky rows -------------------------------- */
+.csn-manager-row{grid-template-columns:24px 24px minmax(0,1fr);grid-template-rows:auto auto;}
+.csn-row-text{grid-column:3;grid-row:1;min-width:0;}
+.csn-row-actions{grid-column:1 / -1;grid-row:2;justify-content:flex-start;}
+
+/* --- UI audit fixes: explicit task status control ------------------------ */
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status){color:var(--text-muted);}
+.hearth-view .chw-status{color:var(--carrot-task-accent,var(--interactive-accent));}
+
+/* --- UI audit fixes: empty dashboard ------------------------------------- */
+.hearth-view .hearth-dashboard-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:min(42vh,360px);padding:28px;text-align:center;border:1px dashed var(--background-modifier-border);border-radius:14px;color:var(--text-muted);background:color-mix(in srgb,var(--background-primary) 55%,transparent);}
+.hearth-view .hearth-dashboard-empty-icon svg{width:34px;height:34px;color:var(--interactive-accent);}
+.hearth-view .hearth-dashboard-empty h3{margin:0;font-size:1.05rem;color:var(--text-normal);}
+.hearth-view .hearth-dashboard-empty p{margin:0;max-width:42ch;line-height:1.6;}
+.hearth-view .hearth-dashboard-empty-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px;}
+
 /* Keep card-picker navigation distinct from the shared dialog button skin. */
 .modal.carrot-home-modal.hearth-card-picker-modal button.hearth-picker-rail-btn {
   background:transparent;border:1px solid transparent;color:var(--text-muted);box-shadow:none;text-align:left;
@@ -14330,3 +14361,13 @@ body.hearth-dv-resizing {
 .modal.carrot-home-modal.hearth-card-picker-modal .hearth-picker-request-text { flex-basis:220px; }
 .modal.carrot-home-modal.hearth-card-picker-modal .hearth-picker-request-option button { max-width:100%;white-space:normal;height:auto; }
 .modal.carrot-home-modal.hearth-card-picker-modal .hearth-picker-request-note { overflow-wrap:anywhere; }
+
+/* Narrow calendar cards: keep agenda titles readable at 1280/narrow widths
+   by reclaiming the checkbox column and list gutter for the title. */
+@container hearth-schedule (max-width:520px){
+  .hearth-card .hearth-sched .hearth-agenda-events{padding-left:10px;}
+  .hearth-card .hearth-sched .hearth-agenda-evcheck{display:none;}
+  .hearth-card .hearth-sched .hearth-agenda-event{grid-template-columns:0px 2em 8px minmax(0,1fr) auto;column-gap:4px;padding-left:0;}
+  .hearth-card .hearth-sched .hearth-agenda-evtime{font-size:0.68rem;}
+  .hearth-card .hearth-sched .hearth-agenda-evbadge{max-width:3em;}
+}

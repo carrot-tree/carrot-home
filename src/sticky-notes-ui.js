@@ -16,7 +16,7 @@ var CarrotStickyUI=(()=>{
       const save=btn(row,'保存便签',()=>this.save(),'mod-cta');save.textContent='保存';this.saveButton=save;save.disabled=true;
       btn(row,'取消',()=>this.close());btn(row,'丢弃草稿',async()=>{await this.owner.clearDraft(this.key);this.discarded=true;this.close();},'csn-quiet');
       if(this.path)btn(row,'打开原笔记',()=>this.owner.openFile(this.path));
-      const change=()=>{if(this.loading)return;this.dirty=true;clearTimeout(this.draftTimer);this.draftTimer=setTimeout(()=>this.keepDraft().catch(e=>{error.textContent='草稿暂未保存：'+e.message;}),300);};
+      const change=()=>{if(this.loading)return;this.dirty=true;if(error.textContent==='标题和正文至少写一项'&&(title.value.trim()||body.value.trim()))error.textContent='';clearTimeout(this.draftTimer);this.draftTimer=setTimeout(()=>this.keepDraft().catch(e=>{error.textContent='草稿暂未保存：'+e.message;}),300);};
       title.addEventListener('input',change);body.addEventListener('input',change);
       this.contentEl.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();this.save();}});
       try{

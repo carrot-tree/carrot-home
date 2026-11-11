@@ -74,6 +74,49 @@ function carrotTaskWorkspaceCore() {
   return {NONE, array, defaults, normalize, accounts, matches, prefill, dateMatch, clearFilters, normalizeCardSize, normalizePresentation, focusMatch, focusOptions, agendaGroup, agendaOptions, taskDay};
 }
 
+function carrotTaskStatusCore() {
+  const value = status => String(status?.value ?? status ?? '').trim();
+  const valid = statuses => (Array.isArray(statuses) ? statuses : []).filter(status => status && value(status));
+  const isCompleted = (statuses, id, manager) => {
+    if (typeof manager?.isCompletedStatus === 'function') {
+      try { return !!manager.isCompletedStatus(id); } catch {}
+    }
+    const item = valid(statuses).find(status => value(status) === id);
+    return item?.isCompleted === true;
+  };
+  function completionStatus(statuses, configured, fallback, manager) {
+    const items = valid(statuses);
+    if (!items.length) return '';
+    const completed = items.filter(status => isCompleted(items, value(status), manager));
+    if (!completed.length) return '';
+    for (const candidate of [].concat(configured ?? [])) {
+      const id = value(candidate);
+      if (id && completed.some(status => value(status) === id)) return id;
+    }
+    const fallbackId = value(fallback);
+    if (fallbackId && completed.some(status => value(status) === fallbackId)) return fallbackId;
+    return value(completed[0]);
+  }
+  function incompleteStatus(statuses, previous, defaultStatus, manager) {
+    const items = valid(statuses);
+    if (!items.length) return '';
+    const open = items.filter(status => !isCompleted(items, value(status), manager));
+    if (!open.length) return '';
+    for (const candidate of [previous, defaultStatus]) {
+      const id = value(candidate);
+      if (id && open.some(status => value(status) === id)) return id;
+    }
+    const preferred = open.find(status => /^(open|todo|to-?do|pending|inbox|未开始|待办)$/i.test(value(status)));
+    const nonPaused = open.find(status => !/^paused$/i.test(value(status)));
+    return value(preferred || nonPaused || open[0]) || '';
+  }
+  function statusLabel(statuses, id) {
+    const item = valid(statuses).find(status => value(status) === value(id));
+    return item ? String(item.label || value(item)) : value(id);
+  }
+  return {value, valid, isCompleted, completionStatus, incompleteStatus, statusLabel};
+}
+
 /* Keep the timer owned by TaskNotes: no parallel timer or session reassignment. */
 function carrotTaskPomodoroBridge() {
   const pending = new WeakSet();
@@ -175,12 +218,12 @@ function carrotTaskFocus() {
     let s = sessions.get(cfg);
     if (!s) {
       const stored = cfg.workspace || {}, selected = stored.views?.find(v => v.id === stored.active);
-      s = {filters: core.normalize(stored.filters || selected?.filters), cardSize: core.normalizeCardSize(stored.cardSize), presentation: core.normalizePresentation(stored.presentation), query: '', active: stored.active || '', views: clone(stored.views || [])};
+      s = {filters: core.normalize(stored.filters || selected?.filters), cardSize: core.normalizeCardSize(stored.cardSize), presentation: core.normalizePresentation(stored.presentation), query: '', active: stored.active || '', views: clone(stored.views || []), columnLabels: {...(stored.columnLabels || {})}};
       sessions.set(cfg, s);
     }
     return s;
   }
-  function persisted(s) { return {filters: core.normalize(s.filters), active: s.active, views: clone(s.views), cardSize: core.normalizeCardSize(s.cardSize), presentation: core.normalizePresentation(s.presentation)}; }
+  function persisted(s) { return {filters: core.normalize(s.filters), active: s.active, views: clone(s.views), columnLabels: {...(s.columnLabels || {})}, cardSize: core.normalizeCardSize(s.cardSize), presentation: core.normalizePresentation(s.presentation)}; }
   function project(ctx, raw, source = '') {
     const link = String(raw).replace(/^\[\[|\]\]$/g, '').split('|')[0].split('#')[0];
     const file = ctx.app.metadataCache.getFirstLinkpathDest(link, source);
@@ -230,7 +273,7 @@ function carrotTaskFocus() {
       b.setAttribute('aria-label', `${label}：${b.dataset.taskTitle}`);b.title = label + remaining;
     }
   }
-  function addPomodoro(ctx, task, el, container) {
+  function addPomodoro(ctx, task, el, container, redraw) {
     const actions = el.createDiv('chw-task-actions');
     const date = el.querySelector('.hearth-task-date-btn');if (date) actions.appendChild(date);
     const control = button(actions, '', async () => {
@@ -255,6 +298,45 @@ function carrotTaskFocus() {
     control.appendChild(svg);
     control.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')e.stopPropagation();});
     for (const event of ['pointerdown','mousedown','dblclick','dragstart']) control.addEventListener(event, e => {e.stopPropagation();if(event==='dragstart')e.preventDefault();});
+    addStatusControl(ctx, task, el, container, redraw);
+  }
+  function addStatusControl(ctx, task, el, container, redraw) {
+    const taskNotes = tn(ctx), statuses = taskNotes?.settings?.customStatuses || [];
+    if (statuses.length < 2 || task.recurrence) return;
+    const actions = el.querySelector('.chw-task-actions'); if (!actions) return;
+    const statusCore = carrotTaskStatusCore();
+    const current = String(task.rawStatus ?? task.status ?? '').toLowerCase();
+    const currentLabel = statusCore.statusLabel(statuses, current) || current || '无状态';
+    const control = button(actions, '', event => {
+      const menu = new x.Menu();
+      for (const status of statuses) {
+        const value = String(status.value ?? '').trim(); if (!value) continue;
+        menu.addItem(item => item.setTitle(String(status.label || value)).setChecked(current === value.toLowerCase()).onClick(async () => {
+          try {
+            await fh(ctx, {...task, file: task.file}, value);
+            redraw?.();
+          } catch (error) { new x.Notice(`状态更新失败：${error.message || error}`); }
+        }));
+      }
+      menu.showAtMouseEvent(event);
+    }, 'chw-status');
+    control.setAttribute('aria-label', `更改任务状态：${task.text}（当前：${currentLabel}）`);
+    control.setAttribute('aria-haspopup', 'menu');
+    control.title = `更改状态（当前：${currentLabel}）`;
+    x.setIcon(control, 'circle-dot');
+  }
+  function enhanceTaskAccessibility(container) {
+    for (const card of container.querySelectorAll('.hearth-kanban-card, .hearth-list-item.hearth-task')) {
+      const title = card.dataset.taskTitle || card.querySelector('.hearth-kanban-card-text,.hearth-task-text,.hearth-list-label')?.textContent?.trim() || '任务';
+      const check = card.querySelector('input.hearth-task-check:not(.hearth-task-check-recurring)');
+      if (check) {
+        check.setAttribute('aria-label', `${check.checked ? '取消完成' : '完成'}：${title}`);
+        check.setAttribute('aria-checked', String(!!check.checked));
+        check.title = check.getAttribute('aria-label');
+      }
+      const priority = card.querySelector('.hearth-task-priority');
+      if (priority) priority.setAttribute('aria-label', `修改优先级：${title}`);
+    }
   }
   function decorateControl(el, icon, {chevron = false, iconOnly = false, active = false} = {}) {
     const text = el.textContent.replace(/ ▾$/, '');
@@ -298,8 +380,31 @@ function carrotTaskFocus() {
     onOpen() {
       this.titleEl.setText(this.heading);
       const input = this.contentEl.createEl('input', {attr: {'aria-label': this.heading, placeholder: '名称'}}); input.value = this.value;
-      const commit = async () => {if (!input.value.trim()) return; if(await this.submit(input.value.trim())!==false)this.close();};
-      button(this.contentEl, '保存', commit, 'mod-cta'); input.addEventListener('keydown', e => {if (e.key === 'Enter') commit();}); input.focus();
+      const error = this.contentEl.createDiv({cls:'csn-editor-error',attr:{role:'status'}});
+      let saving = false;
+      const sync = () => {
+        const valid = !!input.value.trim();
+        save.disabled = saving || !valid;
+        if (valid && error.textContent === '名称不能为空') error.textContent = '';
+      };
+      const commit = async () => {
+        if (saving) return;
+        const name = input.value.trim();
+        if (!name) { error.textContent = '名称不能为空'; input.focus(); return; }
+        saving = true; sync();
+        try {
+          const result = await this.submit(name);
+          if (result !== false) this.close();
+          else { saving = false; sync(); input.focus(); }
+        } catch (e) {
+          error.textContent = e?.message || '保存失败';
+          saving = false; sync(); input.focus();
+        }
+      };
+      const save = button(this.contentEl, '保存', commit, 'mod-cta');
+      input.addEventListener('input', sync);
+      input.addEventListener('keydown', e => {if (e.key === 'Enter') {e.preventDefault(); commit();}});
+      sync(); input.focus();
     }
   }
   function manageAccounts(ctx, redraw) {
@@ -309,11 +414,14 @@ function carrotTaskFocus() {
       modal.contentEl.createEl('p', {text: '账号可以改名，已有任务和项目的关联会保留。'});
       for (const account of ctx.plugin.settings.contentAccounts || []) {
         const row = modal.contentEl.createDiv('chw-manager-row'); row.createSpan({text: account.name});
-        button(row, '改名', () => new NameModal(ctx.app, '账号名称', account.name, async name => {account.name = name; await save(ctx); render(); redraw();}).open());
+        button(row, '改名', () => new NameModal(ctx.app, '账号名称', account.name, async name => {
+          if ((ctx.plugin.settings.contentAccounts || []).some(a => a !== account && a.name === name)) throw new Error('这个账号已存在');
+          account.name = name; await save(ctx); render(); redraw();
+        }).open());
       }
       button(modal.contentEl, '添加内容账号', () => new NameModal(ctx.app, '添加内容账号', '', async name => {
         const accounts = ctx.plugin.settings.contentAccounts ||= [];
-        if (accounts.some(a => a.name === name)) {new x.Notice('这个账号已存在'); return;}
+        if (accounts.some(a => a.name === name)) throw new Error('这个账号已存在');
         accounts.push({id: `account-${globalThis.crypto.randomUUID()}`, name}); await save(ctx); render(); redraw();
       }).open());
     }; render(); modal.open();
@@ -427,7 +535,7 @@ function carrotTaskFocus() {
       menu.addItem(i=>i.setTitle('默认').onClick(()=>commit(core.defaults(),{active:'',query:''})));
       for(const view of s.views)menu.addItem(i=>i.setTitle(view.name).setChecked(s.active===view.id).onClick(()=>commit(view.filters,{active:view.id,query:''})));
       menu.addSeparator();menu.addItem(i=>i.setTitle('另存为常用视图…').onClick(()=>new NameModal(ctx.app,'保存常用视图','',async name=>{const view={id:globalThis.crypto.randomUUID(),name,filters:clone(s.filters)};return commit(s.filters,{views:[...s.views,view],active:view.id});}).open()));
-      if(s.active){menu.addItem(i=>i.setTitle('更新当前视图').onClick(()=>commit(s.filters,{views:s.views.map(v=>v.id===s.active?{...v,filters:clone(s.filters)}:v)})));menu.addItem(i=>i.setTitle('删除当前视图').onClick(()=>commit(s.filters,{views:s.views.filter(v=>v.id!==s.active),active:''})));}
+      if(s.active){menu.addItem(i=>i.setTitle('更新当前视图').onClick(()=>commit(s.filters,{views:s.views.map(v=>v.id===s.active?{...v,filters:clone(s.filters)}:v)})));menu.addItem(i=>i.setTitle('删除当前视图').onClick(()=>{const targetId=s.active;if(!targetId)return;Ee(ctx.app,{title:'删除工作视图？',message:`删除「${viewName}」？任务和笔记不会被删除。`,confirmText:'删除视图',onConfirm:()=>{if(s.active===targetId)commit(s.filters,{views:s.views.filter(v=>v.id!==targetId),active:''});}});}));}
     }),'chw-view');viewsButton.setAttribute('aria-label','工作视图');
     button(actions,'＋',()=>createTask(ctx,cfg,tasks,redraw),'hearth-task-add').setAttribute('aria-label','新建任务');
     button(actions,'⋯',event=>menuAt(event,menu=>{
@@ -518,7 +626,9 @@ function carrotTaskFocus() {
     }
     const summary=container.createDiv('chw-summary');summary.setAttribute('aria-live','polite');
     const chip=(text,remove)=>button(summary,`${text} ×`,remove,'chw-chip');
-    for(const key of ['accounts','projects','statuses','priorities'])for(const id of s.filters[key])chip(key==='accounts'?label(ctx,id):key==='projects'?(id===core.NONE?'无项目':projectOpts.find(p=>p.id===id)?.label||id):id,()=>commit({...s.filters,[key]:s.filters[key].filter(v=>v!==id)}));
+    const statusFilterLabels=new Map((tn(ctx)?.settings.customStatuses||[]).map(s=>[String(s.value).toLowerCase(),s.label||s.value]));
+    const priorityFilterLabels=new Map((tn(ctx)?.settings.customPriorities||[]).map(s=>[String(s.value).toLowerCase(),s.label||s.value]));
+    for(const key of ['accounts','projects','statuses','priorities'])for(const id of s.filters[key])chip(key==='accounts'?label(ctx,id):key==='projects'?(id===core.NONE?'无项目':projectOpts.find(p=>p.id===id)?.label||id):key==='statuses'?(statusFilterLabels.get(String(id).toLowerCase())||id):(priorityFilterLabels.get(String(id).toLowerCase())||id),()=>commit({...s.filters,[key]:s.filters[key].filter(v=>v!==id)}));
     const dateLabels={scheduled:{today:'今天计划',week:'本周计划',none:'未排期'},due:{today:'今天截止',week:'本周截止',none:'无截止时间',overdue:'已逾期'}};
     for(const key of ['scheduled','due'])if(s.filters[key])chip(dateLabels[key][s.filters[key]],()=>commit({...s.filters,[key]:''}));
     if(!s.filters.showCompleted)chip('隐藏已完成',()=>commit({...s.filters,showCompleted:true}));
@@ -552,16 +662,33 @@ function carrotTaskFocus() {
     boardHost.querySelector('.hearth-tasks-head')?.remove();
     const statusLabels=new Map((tn(ctx)?.settings.customStatuses||[]).map(s=>[String(s.value).toLowerCase(),s.label||s.value]));
     for(const column of boardHost.querySelectorAll('.hearth-kanban-col')){
-      const titleEl=column.querySelector('.hearth-kanban-col-title'),key=titleEl?.textContent.trim().toLowerCase();
+      const titleEl=column.querySelector('.hearth-kanban-col-title'),rawTitle=titleEl?.textContent.trim(),key=(rawTitle||'').toLowerCase();
       column.dataset.chwStatus=key;
-      if(titleEl&&statusLabels.has(key))titleEl.setText(statusLabels.get(key));
+      const displayLabel=(s.columnLabels||{})[key]||statusLabels.get(key)||rawTitle||key;
+      if(titleEl)titleEl.setText(displayLabel);
+      if(titleEl&&!titleEl.dataset.chwRename){
+        titleEl.dataset.chwRename='1';
+        titleEl.addEventListener('dblclick',event=>{
+          event.preventDefault();event.stopImmediatePropagation();
+          new NameModal(ctx.app,'重命名分栏显示',displayLabel,async name=>{
+            const columnLabels={...(s.columnLabels||{})};columnLabels[key]=name;
+            return commit(s.filters,{columnLabels});
+          }).open();
+        },true);
+      }
       const add=column.querySelector('.hearth-kanban-column-create');
       if(add){const next=add.cloneNode(true);add.replaceWith(next);next.addEventListener('click',event=>{event.stopPropagation();createTask(ctx,cfg,tasks,redraw,key);});}
     }
     const byPath=new Map(matches.map(t=>[t.file.path,t]));
     for(const el of boardHost.querySelectorAll('.hearth-kanban-card')){
       const task=byPath.get(el.dataset.taskPath);if(!task)continue;
-      addPomodoro(ctx,task,el,container);
+      el.dataset.taskTitle=task.text;
+      const priorityEl=el.querySelector('.hearth-task-priority');
+      if(priorityEl&&task.priority){
+        const label=(tn(ctx)?.settings.customPriorities||[]).find(p=>String(p.value).toLowerCase()===String(task.priority).toLowerCase())?.label;
+        if(label){priorityEl.querySelector('.hearth-task-priority-label')?.setText(label);priorityEl.title='优先级：'+label;priorityEl.setAttribute('aria-label','修改优先级：'+task.text+'（'+label+'）');}
+      }
+      addPomodoro(ctx,task,el,container,redraw);
       const account=button(el,task.workspaceAccounts.length?`${task.workspaceAccounts.map(id=>label(ctx,id)).join(' · ')}${task.workspaceInherited?' · 来自项目':''}`:'未分配账号',()=>accountEditor(ctx,task.file,tasks,redraw),'chw-account-chip');account.title='设置这个任务的内容账号';
       account.setAttribute('aria-label',`设置内容账号：${task.text}`);
     }
@@ -600,6 +727,7 @@ function carrotTaskFocus() {
       }
     }
     boardHost.addEventListener('scroll',()=>{if(container.isConnected)rememberScroll();},{capture:true,passive:true});
+    enhanceTaskAccessibility(container);
     syncPomodoroButtons(ctx,container);
     if(!container.__chwPomodoroTick){
       // Update only controls, retaining task focus and scroll while the timer runs.

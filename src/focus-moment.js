@@ -1,3 +1,6 @@
+function carrotFocusProjectName(value){
+  return String(value??'').trim().replace(/^\[\[|\]\]$/g,'').split('|')[0].split('#')[0].replace(/.*\//,'').replace(/\.md$/,'');
+}
 function carrotFocusMomentCore(){
   const seconds=n=>Number.isFinite(Number(n))&&Number(n)>0?Number(n):null;
   const clock=n=>{const t=Math.max(0,Math.ceil(Number(n)||0));return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`;};
@@ -22,12 +25,12 @@ var CarrotFocusMoment=(()=>{
   const button=(el,label,run,cls='')=>CarrotStickyUI.btn(el,label,run,cls);
   class Confirm extends CarrotHomeModal {
     constructor(focus,title,action){super(focus.owner.plugin.app);this.focus=focus;this.heading=title;this.action=action;this.session=focus.state()?.currentSession;}
-    onOpen(){this.titleEl.setText(this.heading);this.contentEl.createEl('p',{text:'当前：'+(this.focus.currentTitle||'未绑定任务的专注')});this.contentEl.createEl('p',{text:'将调用 TaskNotes 结束当前计时，保留为“中断”记录；不会完成任务，也不会把未到时的一轮记为已完成。'});const error=this.contentEl.createDiv({cls:'csn-editor-error',attr:{role:'status'}}),row=this.contentEl.createDiv({cls:'carrot-home-modal-actions'});button(row,'取消',()=>this.close());const done=button(row,'确认结束本轮',async()=>{if(done.disabled)return;done.disabled=true;try{await this.focus.stop(this.session?.id);this.close();if(this.action==='switch')await this.focus.pickTask(false);}catch(e){error.textContent=e.message;done.disabled=false;}},'mod-warning');done.textContent=this.action==='switch'?'结束后选新任务':'结束本轮';}
+    onOpen(){this.titleEl.setText(this.heading);this.contentEl.createEl('p',{text:'当前：'+(this.focus.currentTitle||'未绑定任务的专注')});this.contentEl.createEl('p',{text:'将调用 TaskNotes 结束当前计时，保留为“中断”记录；不会完成任务，也不会把未到时的一轮记为已完成。'});const error=this.contentEl.createDiv({cls:'csn-editor-error',attr:{role:'status'}}),row=this.contentEl.createDiv({cls:'carrot-home-modal-actions'});button(row,'取消',()=>this.close());const done=button(row,'确认结束本轮',async()=>{if(done.disabled)return;done.disabled=true;try{await this.focus.stop(this.session?.id);this.close();if(this.action==='switch')await this.focus.pickTask(false);}catch(e){error.textContent=e.message;done.disabled=false;}},'mod-warning');const isRest=!!this.session&&this.session.type!=='work';done.textContent=this.action==='switch'?'结束后选新任务':isRest?'结束休息':'结束本轮';}
   }
   class Picker extends O.FuzzySuggestModal {
     constructor(focus,tasks){super(focus.owner.plugin.app);this.focus=focus;this.tasks=tasks;this.setPlaceholder('搜索任务 · 优先显示逾期和今天');carrotHomeStyleModal(this);}
     getItems(){return this.tasks;}
-    getItemText(t){const group=C.rank(t)[1],parts=[`【${group}】${t.title||t.path.replace(/.*\//,'').replace(/\.md$/,'')}`];if(t.due)parts.push('截止 '+String(t.due).slice(0,16));if(Array.isArray(t.projects)&&t.projects.length)parts.push(t.projects.map(p=>String(p).replace(/.*\//,'').replace(/\.md$/,'')).join('、'));return parts.join(' · ');}
+    getItemText(t){const group=C.rank(t)[1],parts=[`【${group}】${t.title||t.path.replace(/.*\//,'').replace(/\.md$/,'')}`];if(t.due)parts.push('截止 '+String(t.due).slice(0,16));if(Array.isArray(t.projects)&&t.projects.length)parts.push(t.projects.map(carrotFocusProjectName).filter(Boolean).join('、'));return parts.join(' · ');}
     onChooseItem(t){this.focus.selectTask(t.path).catch(e=>new O.Notice(e.message));}
   }
   class Actions extends CarrotHomeModal {
