@@ -3054,7 +3054,7 @@ var CarrotFocusMoment=(()=>{
     constructor(focus,tasks){super(focus.owner.plugin.app);this.focus=focus;this.tasks=tasks;this.setPlaceholder('搜索任务 · 优先显示逾期和今天');carrotHomeStyleModal(this);}
     getItems(){return this.tasks;}
     getItemText(t){const group=C.rank(t)[1],parts=[`【${group}】${t.title||t.path.replace(/.*\//,'').replace(/\.md$/,'')}`];if(t.due)parts.push('截止 '+String(t.due).slice(0,16));if(Array.isArray(t.projects)&&t.projects.length)parts.push(t.projects.map(p=>String(p).replace(/.*\//,'').replace(/\.md$/,'')).join('、'));return parts.join(' · ');}
-    onChooseItem(t){this.focus.owner.update(s=>({...s,focusPath:t.path})).catch(e=>new O.Notice(e.message));}
+    onChooseItem(t){this.focus.selectTask(t.path).catch(e=>new O.Notice(e.message));}
   }
   class Actions extends CarrotHomeModal {
     constructor(focus){super(focus.owner.plugin.app);this.focus=focus;}
@@ -3073,13 +3073,45 @@ var CarrotFocusMoment=(()=>{
     }
   }
   return class FocusMoment {
-    constructor(owner){this.owner=owner;this.busy=false;this.views=new Set();this.metaCache=new Map();this.nextDuration=null;this.currentTitle='';}
+    constructor(owner){this.owner=owner;this.busy=false;this.views=new Set();this.metaCache=new Map();this.nextDuration=null;this.currentTitle='';this.selectionRevision=0;this.selectionPending=null;this.selectionError='';}
     plugin(){return this.owner.plugin.app.plugins?.plugins?.tasknotes;}
     state(){return this.plugin()?.pomodoroService?.getState?.();}
     bridge(){return this.owner.plugin.taskWorkspace?.pomodoro;}
     settings(){const app=this.owner.plugin.app;app.setting.open();app.setting.openTabById(this.plugin()?'tasknotes':'community-plugins');}
     openPanel(){const app=this.owner.plugin.app;if(!app.commands.executeCommandById('tasknotes:open-pomodoro-view')){this.settings();new O.Notice(this.plugin()?'TaskNotes 计时面板暂不可用，请检查版本与设置':'启用 TaskNotes 后即可开始专注');}}
     invalidate(path){this.metaCache.delete(path);}
+    async selectedPath(){
+      if(this.selectionPending)await this.selectionPending;
+      const revision=this.selectionRevision,service=this.plugin()?.pomodoroService;
+      if(typeof service?.getLastSelectedTaskPath!=='function')return this.owner.state.focusPath;
+      const native=await service.getLastSelectedTaskPath();
+      if(revision!==this.selectionRevision){if(this.selectionPending)await this.selectionPending;return this.owner.state.focusPath;}
+      if(native!=null&&native!==''&&!carrotStickyNotesCore().safePath(native))return this.owner.state.focusPath;
+      // Preserve legacy Home choices until a real TaskNotes selection is observed.
+      // Once synchronized, clearing the native selection must also clear the Home default.
+      const sync=!!native||this.owner.state.focusSelectionSynced===true,path=native||(sync?'':this.owner.state.focusPath);
+      if(sync&&!this.owner.loadError&&(path!==this.owner.state.focusPath||this.owner.state.focusSelectionSynced!==true)){
+        try{
+          if(native&&typeof service.saveLastSelectedTask==='function')await this.selectTask(path,true);
+          else await this.owner.update(s=>revision===this.selectionRevision?{...s,focusPath:path,focusSelectionSynced:true}:s);
+          this.selectionError='';
+        }
+        catch(e){if(this.selectionError!==e.message)new O.Notice('专注任务已读取，但主页选择未保存：'+e.message);this.selectionError=e.message;}
+      }
+      return revision===this.selectionRevision?path:this.owner.state.focusPath;
+    }
+    selectTask(path,observed=false){
+      if(!carrotStickyNotesCore().safePath(path))return Promise.reject(new Error('任务路径无效'));
+      const revision=observed?this.selectionRevision:++this.selectionRevision,previous=this.selectionPending;
+      const work=Promise.resolve(previous).catch(()=>{}).then(async()=>{
+        if(revision!==this.selectionRevision)return;
+        const service=this.plugin()?.pomodoroService,sync=typeof service?.saveLastSelectedTask==='function';
+        if(sync)await service.saveLastSelectedTask(path);
+        if(revision===this.selectionRevision)await this.owner.update(s=>({...s,focusPath:path,focusSelectionSynced:sync}));
+      });
+      this.selectionPending=work;
+      return work.finally(()=>{if(this.selectionPending===work)this.selectionPending=null;this.refresh();});
+    }
     async meta(path){
       if(!path)return null;const file=this.owner.plugin.app.vault.getAbstractFileByPath(path);if(!(file instanceof O.TFile))return null;
       const cached=this.metaCache.get(path);if(cached&&cached.mtime===file.stat.mtime&&Date.now()-cached.at<4000)return cached.value;
@@ -3109,7 +3141,7 @@ var CarrotFocusMoment=(()=>{
         }else if(v.phase==='completed'){
           await this.locked(async()=>{const current=service.getState();if(current.currentSession)return;if(current.nextSessionType!==v.next)throw new Error('下一步计时已变化，请重新检查');if(typeof service.startBreak!=='function'){this.openPanel();return;}await service.startBreak(v.next==='long-break');});
         }else{
-          const path=this.owner.state.focusPath;if(!path){await this.pickTask(false);return;}
+          const path=await this.selectedPath();if(!path){await this.pickTask(false);return;}
           this.metaCache.delete(path);const task=await this.meta(path);if(!C.taskValid(task,tn.settings))throw new Error('上次选择的任务已完成、归档或移除，请换一个任务');
           const result=await this.bridge().run(tn,path,this.nextDuration??undefined);if(result==='conflict')throw new Error('已有其它计时，请先处理当前一轮');if(result==='busy')throw new Error('计时正在处理，请稍后再试');if(result==='started')this.nextDuration=null;
         }
@@ -3121,7 +3153,7 @@ var CarrotFocusMoment=(()=>{
       const head=root.createDiv({cls:'cta-focus-head'});head.createSpan({text:'专注一刻'});const label=head.createSpan({cls:'cfm-phase'});
       const face=root.createDiv({cls:'cfm-ticket-face'}),dial=face.createDiv({cls:'cfm-ticket-dial'}),time=dial.createSpan({cls:'cta-time'}),detail=face.createDiv({cls:'cfm-ticket-detail'});
       const taskRow=detail.createDiv({cls:'cfm-task-row'});
-      const task=button(taskRow,'选择任务',()=>{const state=this.state(),path=state?.currentSession?.type==='work'?state.currentSession.taskPath:state?.currentSession?null:this.owner.state.focusPath;return path?this.owner.openFile(path):this.pickTask();},'cta-task');
+      const task=button(taskRow,'选择任务',async()=>{const state=this.state(),path=state?.currentSession?.type==='work'?state.currentSession.taskPath:state?.currentSession?null:await this.selectedPath();return path?this.owner.openFile(path):this.pickTask();},'cta-task');
       const switchTask=button(taskRow,'切换任务',()=>this.pickTask(),'cfm-switch-task');icon(switchTask,'arrow-right-left');
       const controls=detail.createDiv({cls:'cfm-ticket-controls'}),main=button(controls,'开始专注',()=>this.main(),'cta-play cfm-main'),more=button(controls,'更多专注操作：换任务、结束和时长',()=>new Actions(this).open(),'cfm-ticket-more');icon(more,'ellipsis');
       const bottom=root.createDiv({cls:'cta-focus-bottom'}),track=bottom.createDiv({cls:'cta-progress'}),fill=track.createDiv({cls:'cta-progress-fill'}),duration=bottom.createSpan({cls:'cta-status'});
@@ -3136,7 +3168,10 @@ var CarrotFocusMoment=(()=>{
         duration.textContent=v.session?`${v.detail||'本轮'} ${total?C.clock(total):'--:--'}`:v.time===null?'':`本轮 ${C.clock(v.time)}`;
         more.disabled=switchTask.disabled=this.busy;
         root.toggleClass('cta-is-running',!!state?.isRunning);
-        const path=v.session?v.path:this.owner.state.focusPath;
+        let selected;
+        try{selected=await this.selectedPath();}catch(e){if(disposed||current!==token)return;if(!v.session){hint.textContent='上次任务暂时无法读取，请稍后重试';root.dataset.warning='true';return;}}
+        if(disposed||current!==token)return;
+        const path=v.session?v.path:selected;
         if(v.rest){task.textContent=v.detail+'，让眼睛放松一下';task.setAttribute('aria-label','打开 TaskNotes 休息面板');task.onclick=null;hint.textContent=v.zero?'等待 TaskNotes 结算休息':'休息计时由 TaskNotes 同步';task.disabled=true;this.currentTitle=v.detail;return;}
         task.disabled=false;
         if(v.session&&!path){task.textContent='未绑定任务的专注';task.disabled=true;hint.textContent=v.zero?'等待 TaskNotes 完成本轮':'可在原生面板查看此会话';this.currentTitle=task.textContent;return;}

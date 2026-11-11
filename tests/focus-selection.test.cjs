@@ -1,0 +1,22 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const source=fs.readFileSync(path.join(__dirname,'../src/focus-moment.js'),'utf8');
+const sticky=fs.readFileSync(path.join(__dirname,'../src/sticky-notes-core.js'),'utf8');
+function setup({native='task-native.md',get=true,save=true,local='task-legacy.md',synced=false}={}){
+ let state={focusPath:local,...(synced?{focusSelectionSynced:true}:{})},persisted=native;
+ const service={};if(get)service.getLastSelectedTaskPath=async()=>persisted;if(save)service.saveLastSelectedTask=async p=>{persisted=p;};
+ const tn={pomodoroService:service};const notices=[];
+ const sandbox={CarrotHomeModal:class{},CarrotStickyUI:{},require:()=>({FuzzySuggestModal:class{},Notice:class{constructor(t){notices.push(t);}}})};
+ vm.runInNewContext(sticky+'\n'+source+'\nglobalThis.Focus=CarrotFocusMoment;',sandbox);
+ const writes=[],owner={get state(){return state;},loadError:null,plugin:{app:{plugins:{plugins:{tasknotes:tn}}}},async update(fn){state=fn(state);writes.push(JSON.parse(JSON.stringify(state)));}};
+ return {focus:new sandbox.Focus(owner),owner,service,writes,notices,setNative:p=>persisted=p,getNative:()=>persisted};
+}
+test('idle default follows native selection and saves the observed choice for reload',async()=>{const x=setup();assert.equal(await x.focus.selectedPath(),'task-native.md');assert.equal(x.owner.state.focusPath,'task-native.md');assert.equal(x.owner.state.focusSelectionSynced,true);await x.focus.selectedPath();assert.equal(x.writes.length,1);const restored=setup({local:x.owner.state.focusPath,synced:true,native:'task-native.md'});assert.equal(await restored.focus.selectedPath(),'task-native.md');});
+test('later native picks and explicit native clears are reflected without restoring stale local choices',async()=>{const x=setup();await x.focus.selectedPath();x.setNative('task-new.md');assert.equal(await x.focus.selectedPath(),'task-new.md');x.setNative(undefined);assert.equal(await x.focus.selectedPath(),'');assert.equal(x.owner.state.focusPath,'');assert.equal(await x.focus.selectedPath(),'');});
+test('legacy Home choice survives until native selection exists, and older service versions retain local support',async()=>{const x=setup();x.setNative(undefined);assert.equal(await x.focus.selectedPath(),'task-legacy.md');assert.equal(x.writes.length,0);const y=setup({get:false,save:false});await y.focus.selectTask('local-new.md');assert.equal(await y.focus.selectedPath(),'local-new.md');});
+test('Home picker selection is shared with TaskNotes and later restored',async()=>{const x=setup();await x.focus.selectTask('from-home.md');assert.equal(x.getNative(),'from-home.md');assert.equal(await x.focus.selectedPath(),'from-home.md');assert.equal(x.owner.state.focusSelectionSynced,true);});
+test('slow native reads cannot overwrite a newer explicit selection',async()=>{const x=setup();let release;x.service.getLastSelectedTaskPath=()=>new Promise(r=>release=r);const old=x.focus.selectedPath();await x.focus.selectTask('latest.md');release('stale.md');assert.equal(await old,'latest.md');assert.equal(x.owner.state.focusPath,'latest.md');});
+test('rapid picker choices serialize and persist the most recent choice',async()=>{const x=setup();const a=x.focus.selectTask('first.md'),b=x.focus.selectTask('second.md');await Promise.all([a,b]);assert.equal(x.getNative(),'second.md');assert.equal(x.owner.state.focusPath,'second.md');});
+test('unsafe service values cannot corrupt the sidecar and write failures keep readable native selections',async()=>{const x=setup({native:'../bad.md'});assert.equal(await x.focus.selectedPath(),'task-legacy.md');assert.equal(x.writes.length,0);await assert.rejects(x.focus.selectTask('../bad.md'));const y=setup();y.owner.update=async()=>{throw Error('disk full');};assert.equal(await y.focus.selectedPath(),'task-native.md');assert.equal(await y.focus.selectedPath(),'task-native.md');assert.equal(y.notices.length,1);});
+test('observed choices are persisted through the native API once, including task-card starts',async()=>{const x=setup({native:'card-start.md'});const saved=[];x.service.saveLastSelectedTask=async p=>{saved.push(p);x.setNative(p);};assert.equal(await x.focus.selectedPath(),'card-start.md');await x.focus.selectedPath();assert.deepEqual(saved,['card-start.md']);});
