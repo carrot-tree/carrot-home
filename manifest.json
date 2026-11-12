@@ -1,7 +1,7 @@
 {
   "id": "carrot-home",
   "name": "Carrot Home",
-  "version": "2.1.6",
+  "version": "2.2.0",
   "minAppVersion": "1.12.2",
   "description": "单页 Obsidian 首页：时钟、日历、书签、最近笔记、TaskNotes 看板与项目甘特图。基于 Hearth 定制，支持 BRAT。",
   "author": "Claudian (fork of ondreu/hearth)",

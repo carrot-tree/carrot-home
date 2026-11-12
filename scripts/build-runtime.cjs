@@ -17,7 +17,13 @@ for (const entry of samples) {
 const bootstrap = read('src/brat-bootstrap.js')
     .replace('__CARROT_EMBEDDED_DEFAULTS__', () => JSON.stringify(defaults))
     .replace('__CARROT_EMBEDDED_SAMPLES__', () => JSON.stringify(samples));
-const runtime = read('src/home-base.js').trimEnd() + '\n\n' + read('src/modal-style.js').trimEnd() + '\n\n' + read('src/tasks-workspace.js').trimEnd() + '\n\n' + read('src/sticky-notes-core.js').trimEnd() + '\n\n' + read('src/sticky-notes-ui.js').trimEnd() + '\n\n' + read('src/focus-moment.js').trimEnd() + '\n\n' + read('src/top-area.js').trimEnd() + '\n\n' + read('src/top-area-settings.js').trimEnd() + '\n\n' + bootstrap;
+const runtimeModules = [
+    'src/home-base.js', 'src/modal-style.js', 'src/tasks-workspace.js',
+    'src/sticky-notes-core.js', 'src/sticky-notes-ui.js', 'src/focus-moment.js',
+    'src/top-area.js', 'src/top-area-settings.js', 'src/backup-reliability.js',
+    'src/workbench-polish.js', 'src/dashboard-shortcuts.js'
+];
+const runtime = runtimeModules.map(name => read(name).trimEnd()).concat(bootstrap).join('\n\n');
 if (process.argv.includes('--check')) assert.equal(read('main.js'), runtime, 'Run the build before committing');
 else fs.writeFileSync(path.join(root, 'main.js'), runtime);
 console.log('Self-contained Home runtime: one dashboard, six cards, fifteen fictional notes.');

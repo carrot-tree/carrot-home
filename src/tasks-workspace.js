@@ -58,7 +58,7 @@ function carrotTaskWorkspaceCore() {
     const f = normalize(filters);
     return (f.showCompleted || !task.done) && focusMatch(task,f.focus,now) && dimension(f.accounts, task.workspaceAccounts || []) && dimension(f.projects, (task.workspaceProjects || []).map(p => p.id)) &&
       dimension(f.statuses, [task.status || '']) && dimension(f.priorities, [task.priority || 'none']) &&
-      dateMatch(task.scheduled, f.scheduled, now) && dateMatch(task.dueRaw || task.due, f.due, now, task.done) &&
+      dateMatch(scheduledDay(task), f.scheduled, now) && dateMatch(task.dueRaw || task.due, f.due, now, task.done) &&
       (!query.trim() || [task.text, ...(task.workspaceProjects || []).map(p => p.label)].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   }
   function prefill(filters) {

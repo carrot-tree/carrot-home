@@ -3,39 +3,129 @@ var CarrotStickyUI=(()=>{
   const O=require('obsidian'),C=carrotStickyNotesCore();
   const icon=(el,name)=>{const span=el.createSpan({cls:'cta-icon'});O.setIcon(span,name);return span;};
   const btn=(el,label,run,cls='')=>{const b=el.createEl('button',{cls:'cta-button '+cls,text:label,attr:{type:'button','aria-label':label,title:label}});b.addEventListener('click',e=>{e.stopPropagation();Promise.resolve().then(run).catch(error=>new O.Notice(error.message));});return b;};
+  const draftSessions=new WeakMap();
+  const sessions=owner=>{if(!draftSessions.has(owner))draftSessions.set(owner,new Map());return draftSessions.get(owner);};
   class Editor extends CarrotHomeModal {
-    constructor(owner,path=null){super(owner.plugin.app);this.owner=owner;this.path=path;this.key=path||'new';this.saved=false;this.discarded=false;this.loading=true;this.saving=false;this.dirty=false;}
+    constructor(owner,path=null){super(owner.plugin.app);this.owner=owner;this.path=path;this.key=path||'new';this.capturePath=null;this.needsIndex=false;this.saved=false;this.discarded=false;this.loading=true;this.saving=false;this.discarding=false;this.dirty=false;this.closed=false;this.draftRevision=0;this.draftQueue=Promise.resolve();this.renamePending=Promise.resolve();}
+    syncControls(){
+      const busy=this.saving||this.discarding||this.closing,locked=this.loading||busy||this.loadFailed||this.superseded;
+      this.contentEl.setAttribute('aria-busy',String(busy));
+      for(const input of [this.titleInput,this.bodyInput]){input.disabled=!!locked;input.readOnly=this.saved;}
+      this.saveButton.disabled=!!locked;this.saveButton.textContent=this.closing?'保留草稿中…':this.saving?(this.saved?(this.needsIndex?'恢复入口中…':'清理草稿中…'):'保存中…'):this.saved?(this.needsIndex?'恢复便签入口':'重试清理草稿'):'保存';
+      this.saveButton.setAttribute('aria-label',this.saved?(this.needsIndex?'恢复已保存便签的主页入口':'重试清理已保存便签的草稿'):'保存便签');
+      this.saveButton.title=this.saveButton.textContent;
+      this.cancelButton.disabled=busy;this.cancelButton.textContent=this.saved?'关闭':'取消';this.cancelButton.setAttribute('aria-label',this.cancelButton.textContent);this.cancelButton.title=this.cancelButton.textContent;this.discardButton.disabled=!!locked||this.saved;
+      if(this.openButton){this.openButton.disabled=!!locked;this.openButton.hidden=!this.path&&!this.saved&&!this.captureExists;}
+    }
+    snapshot(){return {title:this.titleInput.value,body:this.bodyInput.value,baseText:this.baseText??null,updatedAt:Date.now(),...(this.capturePath?{capturePath:this.capturePath}:{})};}
+    remember(){if(this.session&&!this.superseded)this.session.memory=this.snapshot();}
+    operation(){let finish;const pending=new Promise(resolve=>finish=resolve);this.operationPending=pending;return ()=>{if(this.operationPending===pending)this.operationPending=null;finish();};}
+    followRename(oldPath,newPath,pending){
+      const moved=p=>p&&(p===oldPath||p.startsWith(oldPath+'/'))?newPath+p.slice(oldPath.length):p;
+      if(moved(this.path)===this.path&&moved(this.capturePath)===this.capturePath)return;
+      const oldKey=this.key,owned=sessions(this.owner).get(oldKey)===this.session;
+      this.path=moved(this.path);this.capturePath=moved(this.capturePath);this.key=this.path||'new';
+      if(owned){sessions(this.owner).delete(oldKey);sessions(this.owner).set(this.key,this.session);}
+      if(this.session?.memory?.capturePath)this.session.memory={...this.session.memory,capturePath:moved(this.session.memory.capturePath)};
+      // The controller queued index migration before announcing the rename.
+      // Earlier writes migrate with it; later writes wait and use the new key.
+      this.renamePending=Promise.all([this.renamePending,Promise.resolve(pending)]).catch(error=>{if(!this.closed)this.errorEl.textContent='笔记已改名，便签索引暂未保存：'+error.message;});
+      if(!this.closed)this.hintEl.textContent='已跟随原笔记改名。继续编辑会保存到新位置；关闭或取消仍会保留草稿。';
+    }
     async onOpen(){
       this.modalEl.addClass('csn-editor');this.titleEl.setText(this.path?'改一改':'贴一张');
-      const hint=this.contentEl.createEl('p',{cls:'cta-capture-hint',text:'标题可以留空。关闭或取消会保留草稿；Cmd/Ctrl+Enter 保存。'});
+      const hint=this.contentEl.createEl('p',{cls:'cta-capture-hint',text:'标题可以留空。关闭或取消会保留草稿；Cmd/Ctrl+Enter 保存。'});this.hintEl=hint;
       const title=this.contentEl.createEl('input',{cls:'csn-title-input',attr:{placeholder:'标题（可选）','aria-label':'便签标题（可选）',type:'text'}});
       const body=this.contentEl.createEl('textarea',{cls:'csn-body-input',attr:{placeholder:'写点要记住的事…','aria-label':'便签正文',rows:'8'}});
       this.titleInput=title;this.bodyInput=body;
       const error=this.contentEl.createDiv({cls:'csn-editor-error',attr:{role:'status'}});this.errorEl=error;
       const row=this.contentEl.createDiv({cls:'carrot-home-modal-actions'});
       const save=btn(row,'保存便签',()=>this.save(),'mod-cta');save.textContent='保存';this.saveButton=save;save.disabled=true;
-      btn(row,'取消',()=>this.close());btn(row,'丢弃草稿',async()=>{await this.owner.clearDraft(this.key);this.discarded=true;this.close();},'csn-quiet');
-      if(this.path)btn(row,'打开原笔记',()=>this.owner.openFile(this.path));
-      const change=()=>{if(this.loading)return;this.dirty=true;if(error.textContent==='标题和正文至少写一项'&&(title.value.trim()||body.value.trim()))error.textContent='';clearTimeout(this.draftTimer);this.draftTimer=setTimeout(()=>this.keepDraft().catch(e=>{error.textContent='草稿暂未保存：'+e.message;}),300);};
+      this.cancelButton=btn(row,'取消',()=>this.close());this.discardButton=btn(row,'丢弃草稿',()=>this.discard(),'csn-quiet');
+      this.openButton=btn(row,'打开原笔记',()=>this.owner.openFile(this.path||this.capturePath));
+      const change=()=>{if(this.loading||this.saving||this.discarding||this.closing||this.saved||this.closed||this.superseded)return;this.dirty=true;this.remember();if(error.textContent==='标题和正文至少写一项'&&(title.value.trim()||body.value.trim()))error.textContent='';clearTimeout(this.draftTimer);this.draftTimer=setTimeout(()=>this.keepDraft().catch(e=>{error.textContent='草稿暂未保存：'+e.message;}),300);};
       title.addEventListener('input',change);body.addEventListener('input',change);
       this.contentEl.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();this.save();}});
+      const previous=sessions(this.owner).get(this.key);let initialized;
+      this.session={editor:this,memory:previous?.memory||null,ready:new Promise(resolve=>initialized=resolve)};sessions(this.owner).set(this.key,this.session);
+      if(previous){previous.editor.superseded=true;previous.editor.syncControls();}
+      this.unsubscribeRename=this.owner.subscribeRename?.((...args)=>this.followRename(...args));this.syncControls();
       try{
-        let value={title:'',body:''};this.baseText=null;
-        if(this.path){const data=await this.owner.readNote(this.path);if(data.missing)throw new Error('原文件已移除，请在全部便签中处理失效引用');value=data;this.baseText=data.raw;}
-        const draft=this.owner.state.drafts[this.key];if(draft){value=draft;this.baseText=draft.baseText??this.baseText;this.dirty=true;hint.textContent='已恢复上次草稿。取消或关闭仍会保留；点击保存才会更新原笔记。';}
-        title.value=value.title;body.value=value.body;this.initial={title:title.value,body:body.value};this.loading=false;save.disabled=false;body.focus();
-      }catch(e){error.textContent=e.message;this.loading=false;title.disabled=true;body.disabled=true;}
+        // Waiting only for Store.queue misses an older editor's local close
+        // snapshot. Drain that editor before enabling the new session, and
+        // invalidate its later writes as soon as this session takes ownership.
+        if(previous){await previous.ready;await previous.editor.operationPending;await previous.editor.closePending;await previous.editor.draftQueue.catch(()=>{});}
+        const inherited=previous&&!previous.editor.saved&&!previous.editor.discarded?previous.memory:null;this.session.memory=inherited;
+        if(this.closed||this.superseded)return;
+        let value={title:'',body:''},originalRaw=null;this.baseText=null;
+        if(inherited){title.value=inherited.title;body.value=inherited.body;this.baseText=inherited.baseText;this.capturePath=inherited.capturePath||null;this.dirty=true;}
+        if(this.path){const data=await this.owner.readNote(this.path);if(data.missing)throw new Error('原文件已移除，请在全部便签中处理失效引用');value=data;this.baseText=originalRaw=data.raw;}
+        await this.renamePending;if(this.closed||this.superseded)return;
+        let memoryError=null;
+        if(inherited)try{await this.owner.setDraft(this.key,{...inherited,...(this.capturePath?{capturePath:this.capturePath}:{})});}catch(e){memoryError=e;}
+        if(this.closed||this.superseded)return;
+        const draft=inherited||this.owner.state.drafts[this.key];if(draft){value=draft;this.baseText=draft.baseText??this.baseText;this.dirty=true;hint.textContent='已恢复上次草稿。取消或关闭仍会保留；点击保存才会更新原笔记。';}
+        if(draft?.capturePath&&C.safePath(draft.capturePath))this.capturePath=draft.capturePath;
+        if(draft&&this.capturePath&&!this.path){const existing=await this.owner.readNote(this.capturePath);this.captureExists=!existing.missing;if(!existing.missing&&(draft.title.trim()||draft.body.trim())&&existing.raw===C.createText(draft.title,draft.body)){this.saved=true;this.needsIndex=![...this.owner.state.notes,...this.owner.state.archived].includes(this.capturePath);}}
+        else if(draft?.savePending===true&&typeof draft.baseText==='string'&&(draft.title.trim()||draft.body.trim())&&originalRaw===C.rewrite(draft.baseText,draft.title,draft.body))this.saved=true;
+        if(this.closed||this.superseded)return;
+        if(this.saved){this.dirty=false;hint.textContent='这张便签原文已经保存。可恢复主页入口或清理遗留草稿，也可以关闭后打开原笔记。';error.textContent=this.needsIndex?'原文已保存，主页入口尚未恢复。':'原文已保存，草稿清理尚未完成。';}
+        else if(memoryError){hint.textContent='已恢复本次运行中保留的内容，目前仍未写入磁盘；请复制内容或重试保存，退出应用后无法保证恢复。';error.textContent='草稿仍未写入磁盘：'+memoryError.message;}
+        title.value=value.title;body.value=value.body;this.initial={title:title.value,body:body.value};this.loading=false;if(this.dirty)this.remember();this.syncControls();if(!this.saved)body.focus();
+      }catch(e){error.textContent=e.message;this.loading=false;this.loadFailed=true;this.syncControls();}
+      finally{initialized();}
     }
-    async keepDraft(){if(this.loading||this.saved||this.discarded||!this.dirty)return;return this.owner.setDraft(this.key,{title:this.titleInput.value,body:this.bodyInput.value,baseText:this.baseText,updatedAt:Date.now()});}
+    keepDraft(){
+      if(this.loading||this.saved||this.discarded||this.discarding||this.superseded||!this.dirty)return Promise.resolve(false);
+      this.remember();const revision=this.draftRevision,value=this.snapshot();
+      const work=this.draftQueue.catch(()=>{}).then(async()=>{await this.renamePending;if(revision!==this.draftRevision||this.saved||this.discarded||this.discarding||this.superseded)return false;await this.owner.setDraft(this.key,{...value,...(this.capturePath?{capturePath:this.capturePath}:{})});return true;});
+      this.draftQueue=work;return work;
+    }
     async save(){
-      if(this.loading||this.saving||this.saveButton.disabled)return;
-      const title=this.titleInput.value.trim(),body=this.bodyInput.value.trim();if(!title&&!body){this.errorEl.textContent='标题和正文至少写一项';this.bodyInput.focus();return;}
-      this.saving=true;this.saveButton.disabled=true;clearTimeout(this.draftTimer);this.errorEl.textContent='保存中…';
-      try{if(this.path)await this.owner.editNote(this.path,title,body,this.baseText);else await this.owner.capture(title,body);this.saved=true;await this.owner.clearDraft(this.key);this.close();}
-      catch(e){this.errorEl.textContent=e.message;try{await this.keepDraft();}catch{}this.saving=false;this.saveButton.disabled=false;}
+      if(this.loading||this.saving||this.discarding||this.closing||this.closed||this.superseded||this.saveButton.disabled)return;
+      const title=this.titleInput.value.trim(),body=this.bodyInput.value.trim();if(!this.saved&&!title&&!body){this.errorEl.textContent='标题和正文至少写一项';this.bodyInput.focus();return;}
+      const finished=this.operation();this.saving=true;this.draftRevision++;clearTimeout(this.draftTimer);this.errorEl.textContent=this.saved?'清理草稿中…':'保存中…';this.syncControls();
+      try{
+        await this.draftQueue.catch(()=>{});await this.renamePending;
+        if(!this.saved){
+          if(this.path){await this.owner.setDraft(this.key,{title,body,baseText:this.baseText,savePending:true,updatedAt:Date.now()});await this.owner.editNote(this.path,title,body,this.baseText);}
+          else{
+            if(!this.capturePath)this.capturePath=this.owner.prepareCapture(title,body);
+            // Persist the target before creating Markdown. Retries, including
+            // after a restart, reuse this path instead of creating a duplicate.
+            await this.owner.setDraft(this.key,{title,body,baseText:null,capturePath:this.capturePath,updatedAt:Date.now()});
+            await this.owner.capture(title,body,()=>this.capturePath);
+          }
+          this.saved=true;this.dirty=false;this.session.memory=null;
+        }
+        if(this.needsIndex){await this.owner.registerCapture(this.capturePath);this.needsIndex=false;}
+        await this.owner.clearDraft(this.key);this.saving=false;this.syncControls();this.close();
+      }catch(e){
+        if(e.existingPath)this.captureExists=true;
+        if(e.savedPath){this.capturePath=e.savedPath;this.saved=true;this.needsIndex=true;this.dirty=false;this.session.memory=null;}
+        this.errorEl.textContent=this.saved?(this.needsIndex?'便签原文已保存，主页入口尚未恢复。请点“恢复便签入口”重试：':'便签原文已保存，草稿清理未完成。可重试清理或直接关闭：')+e.message:e.message;
+        if(!this.saved)try{await this.keepDraft();}catch{}
+      }finally{this.saving=false;this.syncControls();finished();}
     }
-    close(){if(this.saving&&!this.saved)return;super.close();}
-    onClose(){clearTimeout(this.draftTimer);this.keepDraft().catch(e=>new O.Notice('草稿暂未保存：'+e.message));}
+    async discard(){
+      if(this.loading||this.saving||this.discarding||this.closing||this.saved||this.closed||this.superseded)return;
+      const finished=this.operation();this.discarding=true;this.draftRevision++;clearTimeout(this.draftTimer);this.errorEl.textContent='正在丢弃草稿…';this.syncControls();
+      try{await this.draftQueue.catch(()=>{});await this.renamePending;await this.owner.clearDraft(this.key);this.discarded=true;this.session.memory=null;this.discarding=false;this.close();}
+      catch(e){this.errorEl.textContent='草稿未能丢弃，内容仍保留：'+e.message;}
+      finally{this.discarding=false;this.syncControls();finished();}
+    }
+    close(){
+      if(this.saving||this.discarding)return Promise.resolve(false);if(this.closing)return this.closePending;
+      if(this.saved||this.discarded||!this.dirty||this.loading||this.closed){super.close();return Promise.resolve(true);}
+      this.closing=true;clearTimeout(this.draftTimer);this.errorEl.textContent='正在保留草稿…';this.syncControls();
+      const work=this.keepDraft().then(()=>{this.closeFlushed=true;this.closing=false;super.close();return true;}).catch(e=>{this.errorEl.textContent='草稿未能写入磁盘，窗口已保留。请复制内容，或检查后重试保存 / 关闭：'+e.message;return false;}).finally(()=>{this.closing=false;this.syncControls();});
+      this.closePending=work;return work;
+    }
+    onClose(){
+      this.closed=true;clearTimeout(this.draftTimer);
+      const finalDraft=this.saved||this.discarded||this.closeFlushed?Promise.resolve(true):this.loading?this.session.ready.then(()=>this.keepDraft()):this.keepDraft();
+      this.closeCleanup=Promise.all([this.draftQueue.catch(()=>false),finalDraft]).then(([,written])=>{if(sessions(this.owner).get(this.key)===this.session&&(written||!this.session.memory))sessions(this.owner).delete(this.key);}).catch(e=>new O.Notice('草稿未写入磁盘；本次运行中再次打开便签可恢复，请复制内容并避免退出应用：'+e.message)).finally(()=>{this.unsubscribeRename?.();this.unsubscribeRename=null;});
+    }
   }
   /* Pointer drag works in Electron without native HTML5 drag ghosts. */
   function bindDrag(owner,handle,source,container,kind,cleanupRegister){

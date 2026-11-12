@@ -43,7 +43,7 @@ function carrotTopAreaCore() {
   const button=(parent,label,action,cls='')=>{const el=parent.createEl('button',{cls:`cta-button ${cls}`,attr:{type:'button','aria-label':label,title:label}});el.addEventListener('click',e=>{e.stopPropagation();Promise.resolve().then(action).catch(error=>new O.Notice(error.message||String(error)));});return el;};
   const rect=el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};};
   class TopArea {
-    constructor(plugin){this.plugin=plugin;this.store=new (carrotStickyNotesCore().Store)(carrotStickyNotesCore().adapterIO(plugin.app.vault.adapter),this.path);this.captureQueue=Promise.resolve();this.mounts=new Set();this.listeners=new Set();this.cache=new Map();this.offset=0;this.dragging=false;this.pendingRefresh=false;this.focus=new CarrotFocusMoment(this);}
+    constructor(plugin){this.plugin=plugin;this.store=new (carrotStickyNotesCore().Store)(carrotStickyNotesCore().adapterIO(plugin.app.vault.adapter),this.path);this.captureQueue=Promise.resolve();this.renameQueue=Promise.resolve();this.mounts=new Set();this.listeners=new Set();this.renameListeners=new Set();this.cache=new Map();this.offset=0;this.dragging=false;this.pendingRefresh=false;this.focus=new CarrotFocusMoment(this);}
     get path(){return `${this.plugin.manifest.dir||`${this.plugin.app.vault.configDir}/plugins/carrot-home`}/top-area.json`;}
     get state(){return this.store.state;}
     get loadError(){return this.store.error;}
@@ -61,6 +61,7 @@ function carrotTopAreaCore() {
       menu.addSeparator();menu.addItem(item=>item.setTitle('更多顶部工具设置…').setIcon('settings').onClick(()=>this.plugin.app.commands.executeCommandById('carrot-home:top-tools-settings')));
     }
     subscribe(fn){this.listeners.add(fn);return ()=>this.listeners.delete(fn);}
+    subscribeRename(fn){this.renameListeners.add(fn);return ()=>this.renameListeners.delete(fn);}
     setDraft(key,value){return this.update(s=>({...s,drafts:{...s.drafts,[key]:value}}));}
     clearDraft(key){return this.update(s=>{const drafts={...s.drafts};delete drafts[key];return {...s,drafts};});}
     async readNote(path){
@@ -70,16 +71,42 @@ function carrotTopAreaCore() {
       try{const raw=await this.plugin.app.vault.cachedRead(file),parts=carrotStickyNotesCore().split(raw),value={...parts,raw,missing:false};this.cache.set(path,{key,value});return value;}
       catch{return {title:'暂时无法读取',body:'请在原笔记中检查文件状态',missing:true,raw:''};}
     }
-    capture(title,body){const work=this.captureQueue.catch(()=>{}).then(()=>this.captureOne(title,body));this.captureQueue=work;return work;}
-    async captureOne(title,body){
+    prepareCapture(title,body){
+      const name=carrotStickyNotesCore().display({title,body}).replace(/[\\/:*?"<>|#\[\]\u0000-\u001f]/g,' ').trim().slice(0,70)||'便签';
+      for(let n=0;n<10000;n++){const path=`Carrot Home 灵感/${name}${n?`-${n+1}`:''}.md`;if(!this.plugin.app.vault.getAbstractFileByPath(path))return path;}
+      throw new Error('同名文件过多，请换一个标题；没有覆盖原笔记');
+    }
+    capture(title,body,reservation){
+      const work=this.captureQueue.catch(()=>{}).then(async()=>{
+        // A capture can wait behind another write while its folder is renamed.
+        // Read the live reservation only after all queued renames settle.
+        let pending;do{pending=this.renameQueue;await pending;}while(pending!==this.renameQueue);
+        return this.captureOne(title,body,typeof reservation==='function'?reservation():reservation);
+      });
+      this.captureQueue=work;return work;
+    }
+    async registerCapture(path){
+      const file=this.plugin.app.vault.getAbstractFileByPath(path);if(!(file instanceof O.TFile))throw new Error('已保存的便签已移动或移除，请检查原笔记后重试');
+      if(!this.state.notes.includes(path)&&!this.state.archived.includes(path))await this.update(s=>({...s,notes:s.notes.includes(path)?s.notes:[path,...s.notes]}));
+      this.offset=0;this.refresh();return file;
+    }
+    async captureOne(title,body,reservedPath){
       const C=carrotStickyNotesCore();if(this.loadError)throw new Error('便签存储异常，尚未创建文件；请检查 top-area.json');
-      const content=C.createText(title,body),vault=this.plugin.app.vault,folder='Carrot Home 灵感';
-      if(!vault.getAbstractFileByPath(folder))try{await vault.createFolder(folder);}catch(e){if(!vault.getAbstractFileByPath(folder))throw e;}
-      const name=C.display({title,body}).replace(/[\\/:*?"<>|#\[\]\u0000-\u001f]/g,' ').trim().slice(0,70)||'便签';let file;
-      for(let n=0;n<10000;n++){const path=`${folder}/${name}${n?`-${n+1}`:''}.md`;if(vault.getAbstractFileByPath(path))continue;try{file=await vault.create(path,content);break;}catch(error){if(vault.getAbstractFileByPath(path))continue;throw error;}}
+      if(reservedPath&&!C.safePath(reservedPath))throw new Error('便签预留位置无效；没有创建或覆盖文件');
+      const content=C.createText(title,body),vault=this.plugin.app.vault,folder=reservedPath?(reservedPath.includes('/')?reservedPath.slice(0,reservedPath.lastIndexOf('/')):''):'Carrot Home 灵感';
+      if(folder&&!vault.getAbstractFileByPath(folder))try{await vault.createFolder(folder);}catch(e){if(!vault.getAbstractFileByPath(folder))throw e;}
+      let file;
+      if(reservedPath){
+        const check=async existing=>{if(!(existing instanceof O.TFile)||await vault.read(existing)!==content){const conflict=new Error('便签预留位置已有其他内容，没有覆盖原文件；请核对原笔记后再保存');conflict.existingPath=reservedPath;throw conflict;}return existing;};
+        const existing=vault.getAbstractFileByPath(reservedPath);
+        if(existing)file=await check(existing);
+        else try{file=await vault.create(reservedPath,content);}catch(error){const raced=vault.getAbstractFileByPath(reservedPath);if(!raced)throw error;file=await check(raced);}
+      }else{
+        for(let n=0;n<10000;n++){const path=this.prepareCapture(title,body);try{file=await vault.create(path,content);break;}catch(error){if(vault.getAbstractFileByPath(path))continue;throw error;}}
+      }
       if(!file)throw new Error('同名文件过多，请换一个标题；没有覆盖原笔记');
-      try{await this.update(s=>({...s,notes:[file.path,...s.notes]}));this.offset=0;this.refresh();}
-      catch(error){new O.Notice(`便签原文已保存在 ${file.path}；索引没有保存，请用“全部便签 → 找回原有便签”找回。`,12000);throw error;}
+      try{await this.registerCapture(file.path);}
+      catch(error){new O.Notice(`便签原文已保存在 ${file.path}；主页入口没有保存，可在编辑器中恢复入口，或用“全部便签 → 找回原有便签”找回。`,12000);const recovery=new Error('便签原文已保存，主页入口尚未恢复：'+error.message);recovery.savedPath=file.path;throw recovery;}
       return file;
     }
     async editNote(path,title,body,baseText){
@@ -95,7 +122,18 @@ function carrotTopAreaCore() {
     removeMissing(path){if(this.plugin.app.vault.getAbstractFileByPath(path))return Promise.reject(new Error('原文件仍然存在，请使用“收起来”保留便签'));return this.update(s=>{const drafts={...s.drafts};delete drafts[path];return {...s,notes:s.notes.filter(p=>p!==path),archived:s.archived.filter(p=>p!==path),drafts};});}
     start(){
       const vault=this.plugin.app.vault;
-      this.plugin.registerEvent(vault.on('rename',(file,oldPath)=>{this.cache.clear();const all=[...this.state.notes,...this.state.archived,this.state.focusPath];if(all.some(p=>p===oldPath||p.startsWith(oldPath+'/')))this.update(s=>carrotStickyNotesCore().rename(s,oldPath,file.path)).catch(e=>new O.Notice(e.message));}));
+      this.plugin.registerEvent(vault.on('rename',(file,oldPath)=>{
+        this.cache.clear();const newPath=file.path,move=p=>typeof p==='string'&&(p===oldPath||p.startsWith(oldPath+'/'))?newPath+p.slice(oldPath.length):p;
+        // Read references after earlier renames settle, so two quick renames
+        // cannot leave the index or an in-flight draft at the intermediate path.
+        const pending=this.renameQueue.catch(()=>{}).then(()=>{
+          const all=[...this.state.notes,...this.state.archived,this.state.focusPath,...Object.keys(this.state.drafts),...Object.values(this.state.drafts).map(d=>d.capturePath).filter(p=>typeof p==='string')];
+          if(all.some(p=>move(p)!==p))return this.update(s=>{const next=carrotStickyNotesCore().rename(s,oldPath,newPath);return {...next,drafts:Object.fromEntries(Object.entries(next.drafts).map(([key,draft])=>[key,draft.capturePath?{...draft,capturePath:move(draft.capturePath)}:draft]))};});
+        });
+        this.renameQueue=pending;
+        for(const listener of this.renameListeners)listener(oldPath,newPath,pending);
+        pending.catch(e=>new O.Notice(e.message));
+      }));
       this.plugin.registerEvent(vault.on('modify',file=>{this.cache.delete(file.path);this.focus.invalidate(file.path);this.focus.refresh();if([...this.state.notes,...this.state.archived].includes(file.path))this.refresh();}));
       this.plugin.registerEvent(vault.on('delete',()=>{this.cache.clear();this.refresh();}));
     }
@@ -238,7 +276,7 @@ function carrotTopAreaCore() {
       mounted.cleanup=cleanup;view.renderChild?.register(cleanup);
     }
     remount(){for(const m of [...this.mounts])m.cleanup();for(const leaf of this.plugin.app.workspace.getLeavesOfType('carrot-home-view'))this.mount(leaf.view);}
-    destroy(){this.dragAbort?.();for(const m of [...this.mounts])m.cleanup();this.listeners.clear();}
+    destroy(){this.dragAbort?.();for(const m of [...this.mounts])m.cleanup();this.listeners.clear();this.renameListeners.clear();}
   }
   const previousRender=En.prototype.render;
   En.prototype.render=function(...args){const result=previousRender.apply(this,args);this.plugin.topArea?.mount(this);return result;};

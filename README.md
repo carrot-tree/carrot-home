@@ -20,6 +20,10 @@ Carrot Home 基于 [ondreu/Hearth](https://github.com/ondreu/Hearth) 定制，�
 - **在主页管理一轮专注**：“专注一刻”同步真实 TaskNotes 会话，支持选择任务、暂停、继续、安全结束与休息。
 - **一起查看任务和项目进度**：通过独立的 Carrot Gantt 插件，在首页中查看项目时间轴和关联任务。
 
+## 右上角快捷按钮
+
+从左上仪表盘菜单打开 **仪表盘设置… → 快捷按钮**，可沿用全局，或为当前页面添加插件命令、自定义命令、笔记和网址，调整名称、图标与顺序。点击保存后生效，布局编辑按钮固定保留。[详细说明](docs/dashboard-shortcuts.md)
+
 ## 顶部工具
 
 “随手晾晾”使用左侧留白，右边缘跟随下方左侧卡片；空间足够时并排显示两张，较窄时切换单张翻页。两个木夹向相反方向倾斜，向左收起后保留可展开的单圈绳。
@@ -66,7 +70,7 @@ Carrot Home 基于 [ondreu/Hearth](https://github.com/ondreu/Hearth) 定制，�
 3. 选择跟踪最新版本，添加后在社区插件列表启用 **Carrot Home**。
 4. 从左侧功能区或命令面板打开 **Carrot Home**。
 
-当前发布版本为 [2.1.4](https://github.com/carrot-tree/carrot-home/releases/tag/2.1.4)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
+当前版本为 **2.2.0「安心工作台」**，设计与验收范围见 [版本设计](docs/next-version-2.2.md)。下载与发布说明请查看 [Release](https://github.com/carrot-tree/carrot-home/releases/latest)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
 
 ### 按需安装配套插件
 

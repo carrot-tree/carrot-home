@@ -14371,3 +14371,73 @@ body.hearth-dv-resizing {
   .hearth-card .hearth-sched .hearth-agenda-evtime{font-size:0.68rem;}
   .hearth-card .hearth-sched .hearth-agenda-evbadge{max-width:3em;}
 }
+
+/* The protected title uses a paint-only surface: its size, title/search axis
+ * and the side tools' measured free space stay exactly the same. */
+.hearth-view .hearth-title.carrot-title-protected {
+	position: relative;
+	isolation: isolate;
+}
+.hearth-view .hearth-title.carrot-title-protected::before {
+	content: '';
+	position: absolute;
+	inset: -6px -12px;
+	z-index: -1;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+	pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.hearth-view .hearth-title.carrot-title-protected { transition: none; }
+}
+/* Saving is progress, not an error; failures return to the normal error color. */
+.csn-editor [aria-busy="true"] .csn-editor-error { color: var(--text-muted); }
+
+/* Per-dashboard shortcuts: edit a local draft, then save explicitly. */
+.csh-shortcuts { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.csh-shortcuts > .setting-item { padding-top: 0; }
+.csh-hint { margin: 0; color: var(--text-muted); font-size: var(--font-ui-small); line-height: 1.6; }
+.csh-status { min-height: 1.5em; color: var(--text-muted); font-size: var(--font-ui-small); line-height: 1.5; }
+.csh-status.is-error { color: var(--text-error); }
+.csh-status.is-saved { color: var(--text-success, var(--interactive-accent)); }
+.csh-add-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.csh-list { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.csh-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "fields fields" "target actions"; gap: 10px 12px; padding: 12px; border: 1px solid var(--background-modifier-border); border-radius: 10px; background: var(--background-secondary); min-width: 0; }
+.csh-row-fields { grid-area: fields; display: grid; grid-template-columns: 18px minmax(0, 1fr) minmax(92px, .35fr); align-items: center; gap: 8px; min-width: 0; }
+.csh-row-fields input:not([type="checkbox"]) { width: 100%; min-width: 0; }
+.csh-row-fields input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
+.modal.carrot-home-modal .csh-row-fields input[type="checkbox"]:checked { background: var(--chm-accent) !important; border-color: var(--chm-accent) !important; }
+.modal.carrot-home-modal .csh-row-fields input[type="checkbox"]:checked::after { background-color: var(--text-on-accent); }
+.csh-target { min-width: 0; font-size: var(--font-ui-small); color: var(--text-muted); line-height: 1.5; overflow-wrap: anywhere; }
+.csh-row > .csh-target { grid-area: target; }
+.csh-row-actions { grid-area: actions; display: flex; align-items: flex-start; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }
+.csh-row-actions button { min-width: 28px; min-height: 28px; }
+.csh-empty { padding: 22px 14px; border: 1px dashed var(--background-modifier-border); border-radius: 10px; text-align: center; color: var(--text-muted); line-height: 1.6; }
+.csh-footer .setting-item-control { flex-wrap: wrap; gap: 8px; }
+.csh-action-modal .setting-item { align-items: flex-start; }
+.csh-action-modal .setting-item-control { min-width: 0; }
+.csh-action-modal input, .csh-action-modal select { max-width: 100%; }
+.hearth-inner > .hearth-dash-switcher-zone > .hearth-arrange-zone.csh-toolbar-zone { flex: 0 1 auto; min-width: 32px; max-width: 70%; gap: 8px; }
+.csh-toolbar-list { display: flex; flex: 0 1 auto; align-items: center; min-width: 0; overflow-x: auto; overflow-y: hidden; gap: 8px; padding: 2px; scrollbar-width: thin; }
+.csh-toolbar-list .csh-toolbar-action { flex: 0 0 32px; margin: 0 !important; }
+.hearth-arrange-zone .csh-layout-button { flex: 0 0 auto; }
+@media (max-width: 620px) {
+  .csh-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "fields" "target" "actions"; }
+  .csh-row-actions { justify-content: flex-start; }
+  .csh-row-fields { grid-template-columns: 18px minmax(0, 1fr) 110px; }
+  .csh-action-modal .setting-item { flex-direction: column; gap: 8px; }
+  .csh-action-modal .setting-item-control { width: 100%; justify-content: flex-start; }
+  .csh-action-modal input, .csh-action-modal select { width: 100%; }
+}
+.csh-toolbar-list:empty { display: none; }
+.hearth-inner > .hearth-dash-switcher-zone > .hearth-arrange-zone.is-in-header .csh-toolbar-action:disabled { opacity: .35; }
+/* Keep explicit save/cancel reachable while long shortcut lists scroll. */
+.modal.carrot-home-modal .hearth-modal-footer.csh-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  flex-shrink: 0;
+  background: var(--background-primary);
+  padding-bottom: 8px;
+}
