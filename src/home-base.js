@@ -2040,7 +2040,11 @@ if(cfg.kanbanCollapsed?.includes(oldKey)){cfg.kanbanCollapsed=cfg.kanbanCollapse
 /* Carrot Home owns its release notes. Keep per-device acknowledgement outside
  * data.json so merely loading a new plugin version cannot rewrite layouts. */
 ;(()=>{
-const HhCarrotReleaseNotes=[{version:"2.1.4",date:"2026-11-10",markdown:`### 顶部布局优化
+const HhCarrotReleaseNotes=[{version:"2.2.1",date:"2026-11-13",markdown:`### 平板适配与任务按钮优化
+- 平板按实际可用宽度展示“随手晾晾”和“专注一刻”，窄分屏保留紧凑入口。
+- 精简卡片、正文和明确文字按钮的悬停解释，修复跨区域残留提示，保留必要图标提示和可访问名称。
+- 任务卡片底部只保留日期与番茄钟两个按钮，统一对齐，并随小／中／大卡片同步缩放。
+- 升级保留现有设置、便签和任务；平板真机与官方同步接收仍需在设备上确认。`},{version:"2.1.4",date:"2026-11-10",markdown:`### 顶部布局优化
 - 打开侧栏或缩窄主页时，两侧工具继续保留至600px可用宽度；下方变单列时不再提前消失。
 - 标题与搜索同步缩放，新建笔记适时改为图标按钮，分类保持方形并支持横向滚动。
 - 专注圆盘缩放时保持视觉重心；左侧晾绳、木夹和绳端按钮的图案上沿与圆盘上沿对齐。

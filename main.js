@@ -2040,7 +2040,11 @@ if(cfg.kanbanCollapsed?.includes(oldKey)){cfg.kanbanCollapsed=cfg.kanbanCollapse
 /* Carrot Home owns its release notes. Keep per-device acknowledgement outside
  * data.json so merely loading a new plugin version cannot rewrite layouts. */
 ;(()=>{
-const HhCarrotReleaseNotes=[{version:"2.1.4",date:"2026-11-10",markdown:`### 顶部布局优化
+const HhCarrotReleaseNotes=[{version:"2.2.1",date:"2026-11-13",markdown:`### 平板适配与任务按钮优化
+- 平板按实际可用宽度展示“随手晾晾”和“专注一刻”，窄分屏保留紧凑入口。
+- 精简卡片、正文和明确文字按钮的悬停解释，修复跨区域残留提示，保留必要图标提示和可访问名称。
+- 任务卡片底部只保留日期与番茄钟两个按钮，统一对齐，并随小／中／大卡片同步缩放。
+- 升级保留现有设置、便签和任务；平板真机与官方同步接收仍需在设备上确认。`},{version:"2.1.4",date:"2026-11-10",markdown:`### 顶部布局优化
 - 打开侧栏或缩窄主页时，两侧工具继续保留至600px可用宽度；下方变单列时不再提前消失。
 - 标题与搜索同步缩放，新建笔记适时改为图标按钮，分类保持方形并支持横向滚动。
 - 专注圆盘缩放时保持视觉重心；左侧晾绳、木夹和绳端按钮的图案上沿与圆盘上沿对齐。
@@ -2540,32 +2544,6 @@ function carrotTaskFocus() {
     control.appendChild(svg);
     control.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')e.stopPropagation();});
     for (const event of ['pointerdown','mousedown','dblclick','dragstart']) control.addEventListener(event, e => {e.stopPropagation();if(event==='dragstart')e.preventDefault();});
-    addStatusControl(ctx, task, el, container, redraw);
-  }
-  function addStatusControl(ctx, task, el, container, redraw) {
-    const taskNotes = tn(ctx), statuses = taskNotes?.settings?.customStatuses || [];
-    if (statuses.length < 2 || task.recurrence) return;
-    const actions = el.querySelector('.chw-task-actions'); if (!actions) return;
-    const statusCore = carrotTaskStatusCore();
-    const current = String(task.rawStatus ?? task.status ?? '').toLowerCase();
-    const currentLabel = statusCore.statusLabel(statuses, current) || current || '无状态';
-    const control = button(actions, '', event => {
-      const menu = new x.Menu();
-      for (const status of statuses) {
-        const value = String(status.value ?? '').trim(); if (!value) continue;
-        menu.addItem(item => item.setTitle(String(status.label || value)).setChecked(current === value.toLowerCase()).onClick(async () => {
-          try {
-            await fh(ctx, {...task, file: task.file}, value);
-            redraw?.();
-          } catch (error) { new x.Notice(`状态更新失败：${error.message || error}`); }
-        }));
-      }
-      menu.showAtMouseEvent(event);
-    }, 'chw-status');
-    control.setAttribute('aria-label', `更改任务状态：${task.text}（当前：${currentLabel}）`);
-    control.setAttribute('aria-haspopup', 'menu');
-    control.title = `更改状态（当前：${currentLabel}）`;
-    x.setIcon(control, 'circle-dot');
   }
   function enhanceTaskAccessibility(container) {
     for (const card of container.querySelectorAll('.hearth-kanban-card, .hearth-list-item.hearth-task')) {
@@ -3623,7 +3601,9 @@ function carrotTopAreaCore() {
     mount(view){
       const content=view?.contentEl;if(!content?.querySelector)return;
       const header=content.querySelector('.hearth-header'),scroll=content.querySelector('.hearth-scroll'),inner=content.querySelector('.hearth-inner'),board=content.querySelector('.hearth-dashboard');
-      if(!header||!scroll||!inner||!board||view.arrangeMode||O.Platform.isMobile)return;
+      // Obsidian's mobile flag includes iPad. Tablets use the measured layout
+      // below; only the phone UI omits the side tools.
+      if(!header||!scroll||!inner||!board||view.arrangeMode||O.Platform.isPhone)return;
       const root=header.createDiv({cls:'cta-layer',attr:{'aria-label':'顶部留白工具'}}),left=root.createDiv({cls:'cta-notes',attr:{'aria-label':'随手晾晾'}}),right=root.createDiv({cls:'cta-focus',attr:{'aria-label':'专注一刻'}});
       const compact=root.createDiv({cls:'cta-compact',attr:{'aria-label':'随手晾晾与专注一刻'}});
       const compactNotes=button(compact,'随手晾晾：打开全部便签',()=>new CarrotStickyUI.Manager(this).open());icon(compactNotes,'sticky-note');const compactNotesText=compactNotes.createSpan();
@@ -4150,7 +4130,7 @@ function carrotWorkbenchCore() {
 - 便签保存期间保护输入，原文成功后可单独重试草稿清理，编辑器跟随原笔记改名。
 - 返回主页局部刷新本地数据，更多菜单可主动刷新；专注和搜索继续保留。
 - 标题可读性保护随背景自动启用，也可在外观设置中关闭。
-- 修正循环任务日期、自定义项目字段、长期重复和午夜日历边界。`},...jl.filter(entry=>entry.version!=='2.2.0')];
+- 修正循环任务日期、自定义项目字段、长期重复和午夜日历边界。`},...jl.filter(entry=>entry.version!=='2.2.0')].sort((a,b)=>nf(a.version,b.version)?-1:nf(b.version,a.version)?1:0);
   const applyTitle=view=>{
     const title=view.contentEl?.querySelector('.hearth-title');
     if(title)title.classList.toggle('carrot-title-protected',core.protectTitle(view.plugin.settings,Io(view.plugin.settings)));
@@ -4473,11 +4453,128 @@ function carrotDashboardShortcutsCore() {
   Bl.prototype.close=function(...args){if(this.cshSession?.saving)return;return previousClose.apply(this,args);};
 })();
 
+/* Accessible names and hover explanations serve different purposes. Obsidian
+ * shows aria-label as a tooltip by default, including on large card regions.
+ * Use its --no-tooltip switch without removing those accessible names. */
+function carrotTooltipCore() {
+  const normalize=value=>String(value||'').replace(/\s+/g,' ').trim();
+  function mode({control=false,compound=false,icon=false,text='',label='',title='',clipped=false,help=false,disabled=false}) {
+    text=normalize(text);label=normalize(label);title=normalize(title);
+    if(clipped&&(title||text))return 'native';
+    if(compound||!control)return 'silent';
+    if(help||icon&&!text) {
+      if(title&&title!==label)return 'native';
+      return label?'label':title?'native':'silent';
+    }
+    if(disabled&&title&&title!==label&&title!==text)return 'native';
+    return 'silent';
+  }
+  return {normalize,mode};
+}
+const carrotTooltipDocuments=new WeakMap();
+function carrotHomeTooltipDocument(root) {
+  const doc=root.ownerDocument;
+  let state=carrotTooltipDocuments.get(doc);
+  if(!state){
+    state={roots:new Set(),target:null};
+    state.refresh=()=>{
+      const scope=state.target?.closest?.('.carrot-selective-tooltips');
+      const owner=scope&&state.roots.has(scope),label=state.target?.closest?.('[aria-label]');
+      const quiet=!!owner&&(!label||label.getAttribute('data-carrot-tooltip')!=='label');
+      doc.body.classList.toggle('carrot-home-tooltip-quiet',quiet);
+    };
+    state.over=event=>{state.target=event.target;state.refresh();};
+    doc.addEventListener('pointerover',state.over,true);
+    carrotTooltipDocuments.set(doc,state);
+  }
+  state.roots.add(root);
+  return {
+    refresh:state.refresh,
+    release(){
+      state.roots.delete(root);state.refresh();
+      if(!state.roots.size){doc.removeEventListener('pointerover',state.over,true);doc.body.classList.remove('carrot-home-tooltip-quiet');carrotTooltipDocuments.delete(doc);}
+    }
+  };
+}
+function carrotHomeBindTooltips(root) {
+  if(!root?.querySelectorAll)return ()=>{};
+  const core=carrotTooltipCore();
+  const controls='button,[role="button"],input[type="checkbox"],.clickable-icon,.extra-setting-button,.hearth-filter,.hearth-task-priority,.hearth-task-status';
+  const compounds='.hearth-card,.hearth-kanban-card,.hearth-task-row,.hearth-sched-cell,[role="region"],[role="list"],[role="group"]';
+  const titles='.hearth-kanban-card-text,.hearth-task-text,.hearth-card-title,.hearth-title-text,.hearth-recent-title,.hearth-bookmark-title,.hearth-favorite-title,.cta-note-title,.cta-task';
+  const helpful='.cta-fold-notes,.cta-fold-focus,.csn-note-drag,.hearth-dash-btn,.hearth-task-add,.hearth-task-date-btn,.hearth-task-priority.is-dot-only,.hearth-task-status.is-dot,[data-carrot-tooltip-help]';
+  root.classList.add('carrot-selective-tooltips');
+  const guard=carrotHomeTooltipDocument(root);
+  function apply(el) {
+    if(!el?.matches||!root.contains(el))return;
+    const title=el.getAttribute('title')||'',label=el.getAttribute('aria-label')||'',text=el.innerText||'';
+    if(!title&&!label&&!el.matches(titles))return;
+    const clipped=el.matches(titles)&&el.clientWidth>0&&(el.scrollWidth>el.clientWidth+1||el.clientHeight>0&&el.scrollHeight>el.clientHeight+1);
+    const mode=core.mode({control:el.matches(controls),compound:el.matches(compounds),icon:!!el.querySelector('svg,.svg-icon,.cta-icon,.hearth-task-priority-dot,.hearth-task-chip-dot')||el.matches('input[type="checkbox"]'),text,label,title,clipped,help:el.matches(helpful),disabled:el.disabled===true||el.getAttribute('aria-disabled')==='true'});
+    if(el.getAttribute('data-carrot-tooltip')!==mode){el.setAttribute('data-carrot-tooltip',mode);guard.refresh();}
+    if(mode==='label'){
+      const classes=(el.getAttribute('data-tooltip-classes')||'').split(/\s+/).filter(Boolean);
+      if(!classes.includes('carrot-home-tooltip')){classes.push('carrot-home-tooltip');el.setAttribute('data-tooltip-classes',classes.join(' '));}
+    }
+    // Native title bubbles are separate from Obsidian's aria-label tooltips.
+    // Keep a native bubble only when it carries useful additional information.
+    if(clipped&&mode==='native'&&core.normalize(text)!==title)el.setAttribute('title',core.normalize(text));
+    else if(title&&mode!=='native')el.removeAttribute('title');
+  }
+  function scan(node) {
+    if(!node?.querySelectorAll)return;
+    apply(node);
+    for(const el of node.querySelectorAll('[title],[aria-label],'+titles))apply(el);
+  }
+  scan(root);
+  const observer=new MutationObserver(records=>{
+    for(const record of records) {
+      if(record.type==='attributes')apply(record.target);
+      else {
+        apply(record.target);
+        const control=record.target.closest?.(controls);if(control)apply(control);
+        for(const node of record.addedNodes)scan(node);
+      }
+    }
+  });
+  observer.observe(root,{subtree:true,childList:true,attributes:true,attributeFilter:['title','aria-label','disabled','aria-disabled','data-carrot-tooltip-help']});
+  // Check clipping after layout and immediately before the host handles hover.
+  const hover=event=>{for(let el=event.target;el&&root.contains(el);el=el.parentElement){apply(el);if(el===root)break;}};
+  root.addEventListener('pointerover',hover,true);
+  let disposed=false;
+  return ()=>{if(disposed)return;disposed=true;observer.disconnect();root.removeEventListener('pointerover',hover,true);root.classList.remove('carrot-selective-tooltips');guard.release();};
+}
+;(()=>{
+  const previousRender=En.prototype.render;
+  En.prototype.render=function(...args){
+    this.__carrotTooltipCleanup?.();
+    const result=previousRender.apply(this,args);
+    const cleanup=carrotHomeBindTooltips(this.contentEl);this.__carrotTooltipCleanup=cleanup;
+    this.renderChild?.register(cleanup);return result;
+  };
+  const previousSettings=gs.prototype.renderInto,previousHide=gs.prototype.hide;
+  gs.prototype.renderInto=function(container,...args){
+    this.__carrotTooltipCleanup?.();const result=previousSettings.call(this,container,...args);
+    this.__carrotTooltipCleanup=carrotHomeBindTooltips(container);return result;
+  };
+  gs.prototype.hide=function(...args){this.__carrotTooltipCleanup?.();this.__carrotTooltipCleanup=null;return previousHide?.apply(this,args);};
+  const previousNormalize=carrotHomeNormalizeModalTitle;
+  carrotHomeNormalizeModalTitle=function(modal){
+    const result=previousNormalize(modal);modal.__carrotTooltipCleanup?.();
+    modal.__carrotTooltipCleanup=carrotHomeBindTooltips(modal.modalEl);
+    if(!modal.__carrotTooltipCloseWrapped){
+      modal.__carrotTooltipCloseWrapped=true;const previousClose=modal.onClose;
+      modal.onClose=function(...args){this.__carrotTooltipCleanup?.();this.__carrotTooltipCleanup=null;return previousClose?.apply(this,args);};
+    }
+    return result;
+  };
+})();
+
 /* Carrot Home portable edition: BRAT edition: embedded defaults and fictional local samples. */
 ;(() => {
   const { Notice, Modal, Setting, TFile, normalizePath } = re;
   const base = 'Carrot Home 示例';
-  const defaults = {"title":"我的秘密基地","showTitle":true,"logo":"","logoIcon":"","tabIcon":"","themeColorTarget":"none","showSearch":true,"searchPlaceholder":"","showNewNoteButton":true,"newNoteButtonMode":"newNote","searchContents":true,"searchEngine":"builtin","backgroundKind":"default","backgroundValue":"","backgroundOpacity":0.35,"backgroundBlur":2,"backgroundLayout":"full","bannerHeight":220,"bannerFade":true,"bannerFullWidth":false,"openOnStartup":true,"replaceNewTabs":true,"focusSearchOnOpen":false,"liveRefresh":false,"mobileSearchOnly":false,"showMobileActionBar":true,"mobileActionButtons":[{"id":"action-new-note","label":"新建笔记","icon":"plus","type":"command","target":"carrot-home:new-note"},{"id":"action-new-drawing","label":"新建白板","icon":"pen-tool","type":"command","target":"carrot-home:new-drawing"},{"id":"action-record-voice","label":"录音","icon":"mic","type":"command","target":"carrot-home:record-voice"},{"id":"action-daily-note","label":"今日日记","icon":"calendar","type":"command","target":"carrot-home:open-daily-note"}],"disableExternalCalls":false,"openIn":"tab","openInOverrides":{"link":"default","search":"default","card":"default","newNote":"default"},"openFromOutside":"same","lowPower":false,"lowPowerBackgroundColor":"#4a4459","compact":false,"arrangeButtonVisibility":"always","dashboardSwitcherVisibility":"always","cardOpacity":0.5,"cardBlur":7,"cardRadius":14,"cardBorderWidth":1,"hiddenFilters":["bases","presentations","3d","spreadsheets"],"dashboards":[{"id":"dash-mtcqviyf-8009","name":"Home","cards":[{"kind":"clock","title":"","x":0,"y":0,"w":12,"h":2,"id":"card-mtcqx5it-0-2039","fx":0,"fw":0.20125,"fy":0,"fh":118,"clock":{"mode":"digital","hourFormat":"24"},"commands":[]},{"kind":"tasks","title":"Tasks","x":6,"y":2,"w":6,"h":5,"tasks":{"source":"tasknotes","layout":"kanban","kanbanDoneColumns":["done"],"kanbanOrder":["open","in-progress","done","none"],"kanbanColumnSort":{"done":{"reverse":true}}},"id":"card-mtcqx5it-2-1584","fx":0.21140939597315436,"fw":0.7885906040268457,"fy":0,"fh":625},{"kind":"schedule","title":"Calendar","x":0,"y":7,"w":8,"h":6,"id":"card-mtcqx5it-3-9810","fx":0,"fw":0.20125,"fy":117,"fh":358,"schedule":{"taskNotes":{"enabled":true,"scheduled":true,"due":true,"recurring":true,"timeblocks":true,"completed":true,"archived":false,"allowComplete":true,"subscriptions":true,"colorBy":"status"}}},{"kind":"recent","title":"Recent","count":10,"x":8,"y":7,"w":4,"h":4,"id":"card-mtcqx5it-4-7418","fx":0,"fw":0.20067796610169492,"fy":641,"fh":454},{"kind":"leaf","title":"项目甘特图","leafView":{"viewType":"hearth-gantt-view","hideHeader":true},"x":0,"y":13,"w":12,"h":6,"id":"card-hearth-gantt-1787917216","fx":0.21143847487001732,"fw":0.7885615251299827,"fy":641,"fh":571},{"kind":"bookmarks","title":"Bookmarks","x":0,"y":19,"w":4,"h":3,"id":"card-mtcqx5it-6-9500","fx":0,"fw":0.20125,"fy":491,"fh":134}],"fitToPage":false}],"activeDashboardId":"dash-mtcqviyf-8009","pinnedCards":[],"gridColumns":12,"rowHeight":92,"favorites":[],"fitToPage":true,"taskNotesStatusField":"status","taskNotesDueField":"due","taskNotesPriorityField":"priority","taskNotesDoneValue":"done","taskFieldsEnabled":false,"taskFields":[],"customFileIcons":true,"iconizeIconProperty":"icon","maxWidth":1600,"lastSeenVersion":"2.2.0","setupStatus":"done","homeToolbarActions":[{"id":"daily-note","label":"打开/创建今天的日记","icon":"calendar-days","commandId":"daily-notes","enabled":true},{"id":"tasknotes-pomodoro","label":"打开 TaskNotes 番茄钟","icon":"timer","commandId":"tasknotes:open-pomodoro-view","enabled":true},{"id":"command-mtjkyvmx","label":"TaskNotes: 打开日历视图","icon":"circle-check-big","commandId":"tasknotes:open-advanced-calendar-view","enabled":false}],"headerReadability":"auto"};
+  const defaults = {"title":"我的秘密基地","showTitle":true,"logo":"","logoIcon":"","tabIcon":"","themeColorTarget":"none","showSearch":true,"searchPlaceholder":"","showNewNoteButton":true,"newNoteButtonMode":"newNote","searchContents":true,"searchEngine":"builtin","backgroundKind":"default","backgroundValue":"","backgroundOpacity":0.35,"backgroundBlur":2,"backgroundLayout":"full","bannerHeight":220,"bannerFade":true,"bannerFullWidth":false,"openOnStartup":true,"replaceNewTabs":true,"focusSearchOnOpen":false,"liveRefresh":false,"mobileSearchOnly":false,"showMobileActionBar":true,"mobileActionButtons":[{"id":"action-new-note","label":"新建笔记","icon":"plus","type":"command","target":"carrot-home:new-note"},{"id":"action-new-drawing","label":"新建白板","icon":"pen-tool","type":"command","target":"carrot-home:new-drawing"},{"id":"action-record-voice","label":"录音","icon":"mic","type":"command","target":"carrot-home:record-voice"},{"id":"action-daily-note","label":"今日日记","icon":"calendar","type":"command","target":"carrot-home:open-daily-note"}],"disableExternalCalls":false,"openIn":"tab","openInOverrides":{"link":"default","search":"default","card":"default","newNote":"default"},"openFromOutside":"same","lowPower":false,"lowPowerBackgroundColor":"#4a4459","compact":false,"arrangeButtonVisibility":"always","dashboardSwitcherVisibility":"always","cardOpacity":0.5,"cardBlur":7,"cardRadius":14,"cardBorderWidth":1,"hiddenFilters":["bases","presentations","3d","spreadsheets"],"dashboards":[{"id":"dash-mtcqviyf-8009","name":"Home","cards":[{"kind":"clock","title":"","x":0,"y":0,"w":12,"h":2,"id":"card-mtcqx5it-0-2039","fx":0,"fw":0.20125,"fy":0,"fh":118,"clock":{"mode":"digital","hourFormat":"24"},"commands":[]},{"kind":"tasks","title":"Tasks","x":6,"y":2,"w":6,"h":5,"tasks":{"source":"tasknotes","layout":"kanban","kanbanDoneColumns":["done"],"kanbanOrder":["open","in-progress","done","none"],"kanbanColumnSort":{"done":{"reverse":true}}},"id":"card-mtcqx5it-2-1584","fx":0.21140939597315436,"fw":0.7885906040268457,"fy":0,"fh":625},{"kind":"schedule","title":"Calendar","x":0,"y":7,"w":8,"h":6,"id":"card-mtcqx5it-3-9810","fx":0,"fw":0.20125,"fy":117,"fh":358,"schedule":{"taskNotes":{"enabled":true,"scheduled":true,"due":true,"recurring":true,"timeblocks":true,"completed":true,"archived":false,"allowComplete":true,"subscriptions":true,"colorBy":"status"}}},{"kind":"recent","title":"Recent","count":10,"x":8,"y":7,"w":4,"h":4,"id":"card-mtcqx5it-4-7418","fx":0,"fw":0.20067796610169492,"fy":641,"fh":454},{"kind":"leaf","title":"项目甘特图","leafView":{"viewType":"hearth-gantt-view","hideHeader":true},"x":0,"y":13,"w":12,"h":6,"id":"card-hearth-gantt-1787917216","fx":0.21143847487001732,"fw":0.7885615251299827,"fy":641,"fh":571},{"kind":"bookmarks","title":"Bookmarks","x":0,"y":19,"w":4,"h":3,"id":"card-mtcqx5it-6-9500","fx":0,"fw":0.20125,"fy":491,"fh":134}],"fitToPage":false}],"activeDashboardId":"dash-mtcqviyf-8009","pinnedCards":[],"gridColumns":12,"rowHeight":92,"favorites":[],"fitToPage":true,"taskNotesStatusField":"status","taskNotesDueField":"due","taskNotesPriorityField":"priority","taskNotesDoneValue":"done","taskFieldsEnabled":false,"taskFields":[],"customFileIcons":true,"iconizeIconProperty":"icon","maxWidth":1600,"lastSeenVersion":"2.2.1","setupStatus":"done","homeToolbarActions":[{"id":"daily-note","label":"打开/创建今天的日记","icon":"calendar-days","commandId":"daily-notes","enabled":true},{"id":"tasknotes-pomodoro","label":"打开 TaskNotes 番茄钟","icon":"timer","commandId":"tasknotes:open-pomodoro-view","enabled":true},{"id":"command-mtjkyvmx","label":"TaskNotes: 打开日历视图","icon":"circle-check-big","commandId":"tasknotes:open-advanced-calendar-view","enabled":false}],"headerReadability":"auto"};
   const entries = [{"path":"Carrot Home 示例/开始使用.md","content":"# 欢迎来到 Carrot Home\n\n这是一套可离线使用的示例工作台。示例均为虚构，可编辑、勾选或删除。\n\n- Home：左侧时钟、日历、书签和最近笔记；右侧任务看板与项目甘特图。\n- 项目甘特图的新增项目入口可创建制作流程。\n- 双击/点击任务可按 TaskNotes 设置编辑或打开笔记；拖到其他看板列可修改状态。\n- 日期在首次启用时自动设为当天附近。以后重启不会重置任务，也不会补回你删除的示例。\n- 新任务默认放在 `Carrot Home 示例/任务`；可在 TaskNotes 设置里更改目录。\n- 这些示例只在本地读写；云日历、微信读书等账号功能需使用者自行配置，不附任何原作者凭据。\n\n## 快速试用\n\n1. 将“脚本-第一支示例视频”从进行中拖到已完成。\n2. 打开项目甘特图，调整一项任务日期。\n3. 在项目甘特图里新建自己的项目和任务。\n\n[[Carrot Home 示例/项目/第一支示例视频]] · [[Carrot Home 示例/项目/整理个人知识库]]\n\n## 布局与快捷功能\n\n默认板块位置、大小、间距和颜色来自原工作台。标题改为“我的秘密基地”；顶部 Resojot 与 Thino 图标已去掉。原布局随窗口宽度自适应，内容较长时向下滚动。\n\n移动端的画板按钮在未安装 Excalidraw 时使用 Obsidian 自带白板；录音使用核心录音机。日记、书签、白板、录音机和数据库需要开启对应核心插件。\n\n## 示例与真实工作\n\n删除示例前，可以先建立自己的项目与任务。所有示例都集中在本目录。工作台查询会读取库内带 task 标签的任务和 type: video 的项目；用于已有库时，也会显示符合这些字段的真实内容。\n"},{"path":"Carrot Home 示例/项目/第一支示例视频.md","content":"---\ntitle: 第一支示例视频\ncarrotProject: true\nproject_workflow: video\nproject_status: active\ntype: video\nvideo_stage: script\ntarget_publish: {{DAY:7}}\ntags: [示例项目]\n---\n\n# 第一支示例视频\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"},{"path":"Carrot Home 示例/项目/整理个人知识库.md","content":"---\ntitle: 整理个人知识库\ncarrotProject: true\nproject_workflow: general\nproject_status: active\ntags: [示例项目]\n---\n\n# 整理个人知识库\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"},{"path":"Carrot Home 示例/项目/已发布示例视频.md","content":"---\ntitle: 已发布示例视频\ncarrotProject: true\nproject_workflow: video\nproject_status: completed\ntype: video\nvideo_stage: published\ntarget_publish: {{DAY:-1}}\npublished_date: {{DAY:-1}}\ntags: [示例项目]\n---\n\n# 已发布示例视频\n\n这是虚构示例，展示项目与任务的关联。\n\n## 目标\n\n完成一次从计划到交付的练习。\n\n## 下一步\n\n在主页任务卡片中更新进度。\n"},{"path":"Carrot Home 示例/任务/选题-第一支示例视频.md","content":"---\ntitle: 选题-第一支示例视频\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:-1}}\ndue: {{DAY:0}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ncompletedDate: {{DAY:0}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/脚本-第一支示例视频.md","content":"---\ntitle: 脚本-第一支示例视频\nstatus: in-progress\npriority: high\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:1}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/拍摄-第一支示例视频.md","content":"---\ntitle: 拍摄-第一支示例视频\nstatus: open\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:1}}\ndue: {{DAY:2}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/剪辑-第一支示例视频.md","content":"---\ntitle: 剪辑-第一支示例视频\nstatus: open\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:2}}\ndue: {{DAY:4}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/发布-第一支示例视频.md","content":"---\ntitle: 发布-第一支示例视频\nstatus: open\npriority: low\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:5}}\ndue: {{DAY:6}}\nprojects:\n  - \"[[Carrot Home 示例/项目/第一支示例视频]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/整理收件箱.md","content":"---\ntitle: 整理收件箱\nstatus: in-progress\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:2}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/建立三个常用分类.md","content":"---\ntitle: 建立三个常用分类\nstatus: open\npriority: low\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:2}}\ndue: {{DAY:4}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/阅读工作台使用说明.md","content":"---\ntitle: 阅读工作台使用说明\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:0}}\ndue: {{DAY:0}}\nprojects:\n  - \"[[Carrot Home 示例/项目/整理个人知识库]]\"\ncompletedDate: {{DAY:0}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/发布-已发布示例视频.md","content":"---\ntitle: 发布-已发布示例视频\nstatus: done\npriority: normal\ntags: [task, CarrotHome示例]\nscheduled: {{DAY:-2}}\ndue: {{DAY:-1}}\nprojects:\n  - \"[[Carrot Home 示例/项目/已发布示例视频]]\"\ncompletedDate: {{DAY:-1}}\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/任务/想到一个新点子，稍后整理.md","content":"---\ntitle: 想到一个新点子，稍后整理\nstatus: none\npriority: none\ntags: [task, CarrotHome示例]\ndateCreated: {{DAY:0}}\ndateModified: {{DAY:0}}\n---\n\n这是可自由修改或删除的示例任务。\n\n## 完成标准\n\n完成标题描述的动作，然后在看板中更新状态。\n"},{"path":"Carrot Home 示例/选题/示例-分享我的工作台.md","content":"---\ntitle: 示例-分享我的工作台\ntype: video\nvideo_stage: idea\nproject_status: active\ntags: [选题]\n---\n\n# 分享我的工作台\n\n## 为什么想做\n\n把一个好用的小方法讲清楚。\n\n## 提纲与脚本\n\n- 遇到了什么问题\n- 我的解决方法\n- 观众可以马上试的一个动作\n"}];
   const freshSettings = saved => saved == null || (typeof saved === 'object' && !Array.isArray(saved) && !Object.keys(saved).length);
   const dir = plugin => plugin.manifest.dir || `${plugin.app.vault.configDir}/plugins/carrot-home`;

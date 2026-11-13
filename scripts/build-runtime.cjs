@@ -21,7 +21,7 @@ const runtimeModules = [
     'src/home-base.js', 'src/modal-style.js', 'src/tasks-workspace.js',
     'src/sticky-notes-core.js', 'src/sticky-notes-ui.js', 'src/focus-moment.js',
     'src/top-area.js', 'src/top-area-settings.js', 'src/backup-reliability.js',
-    'src/workbench-polish.js', 'src/dashboard-shortcuts.js'
+    'src/workbench-polish.js', 'src/dashboard-shortcuts.js', 'src/tooltip-policy.js'
 ];
 const runtime = runtimeModules.map(name => read(name).trimEnd()).concat(bootstrap).join('\n\n');
 if (process.argv.includes('--check')) assert.equal(read('main.js'), runtime, 'Run the build before committing');

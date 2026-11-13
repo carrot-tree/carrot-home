@@ -13837,16 +13837,41 @@ body.hearth-dv-resizing {
   padding:1px 6px;border:1px solid var(--background-modifier-border);border-radius:6px;
   background:var(--background-secondary);color:var(--text-muted);font-size:11px;line-height:18px;
 }
-.hearth-view .chw-task-actions { display:flex;align-items:center;justify-content:flex-end;gap:5px;align-self:flex-end; }
-.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status) {
-  position:static;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;
-  width:28px;height:28px;min-height:28px;margin:0;padding:0;border-radius:7px;
+.hearth-view .chw-task-actions {
+  --chw-task-action-desktop-size:28px;--chw-task-action-touch-size:36px;
+  --chw-task-action-desktop-icon:17px;--chw-task-action-touch-icon:17px;
+  --chw-task-action-size:var(--chw-task-action-desktop-size);--chw-task-action-icon-size:var(--chw-task-action-desktop-icon);
+  display:flex;align-items:center;justify-content:flex-end;gap:5px;align-self:flex-end;
+}
+/* Both controls follow the board's density. Agenda controls keep their own
+   fixed size, and touch targets never shrink below the existing 36px. */
+.hearth-view .chw-workspace[data-presentation="board"] .chw-task-actions {
+  --chw-task-action-touch-size:40px;--chw-task-action-touch-icon:19px;
+}
+.hearth-view .chw-workspace[data-presentation="board"][data-card-size="small"] .chw-task-actions {
+  --chw-task-action-desktop-size:24px;--chw-task-action-touch-size:36px;
+  --chw-task-action-desktop-icon:15px;--chw-task-action-touch-icon:17px;
+}
+.hearth-view .chw-workspace[data-presentation="board"][data-card-size="large"] .chw-task-actions {
+  --chw-task-action-desktop-size:32px;--chw-task-action-touch-size:44px;
+  --chw-task-action-desktop-icon:19px;--chw-task-action-touch-icon:21px;
+}
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro) {
+  /* Override the legacy date button's touch sizing and negative margins for
+     both actions, including Obsidian mobile's minimum button dimensions. */
+  box-sizing:border-box!important;position:static;display:inline-flex;align-items:center;justify-content:center;
+  flex:0 0 var(--chw-task-action-size)!important;
+  width:var(--chw-task-action-size)!important;min-width:var(--chw-task-action-size)!important;max-width:var(--chw-task-action-size)!important;
+  height:var(--chw-task-action-size)!important;min-height:var(--chw-task-action-size)!important;max-height:var(--chw-task-action-size)!important;
+  margin:0!important;padding:0!important;border-radius:calc(var(--chw-task-action-size) / 4);line-height:1;appearance:none;
   border:1px solid var(--carrot-task-line);background:var(--background-primary);
   color:var(--text-muted);box-shadow:none;opacity:1;cursor:pointer;
 }
-.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status):hover { background:var(--carrot-task-control-hover);color:var(--text-normal); }
-.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status):focus-visible { outline:2px solid var(--carrot-task-accent);outline-offset:2px; }
-.hearth-view :is(.chw-pomodoro,.chw-status) svg { width:17px;height:17px; }
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro):hover { background:var(--carrot-task-control-hover);color:var(--text-normal);transform:none; }
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro):focus-visible { outline:2px solid var(--carrot-task-accent);outline-offset:2px; }
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro) svg {
+  display:block;flex:0 0 auto;width:var(--chw-task-action-icon-size)!important;height:var(--chw-task-action-icon-size)!important;
+}
 .hearth-view .chw-pomodoro { color:var(--text-error); }
 .hearth-view .chw-pomodoro.is-active { background:var(--carrot-task-control-hover);color:var(--text-normal);border-color:var(--carrot-task-accent); }
 .hearth-view .chw-pomodoro.is-paused { border-style:dashed; }
@@ -13910,14 +13935,13 @@ body.hearth-dv-resizing {
 .hearth-view .chw-task-actions .chw-pomodoro { position:relative; }
 .hearth-view .chw-narrow .chw-agenda .chw-task-actions { grid-row:1;align-self:start; }
 .hearth-view .chw-narrow .chw-agenda .hearth-kanban-card-meta { grid-column:2 / -1; }
-@media (pointer:coarse) {
-  .hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status) {
-    flex-basis:36px;width:36px!important;height:36px!important;min-width:36px;min-height:36px!important;
+@media (hover:none), (pointer:coarse) {
+  .hearth-view .chw-task-actions {
+    --chw-task-action-size:var(--chw-task-action-touch-size);--chw-task-action-icon-size:var(--chw-task-action-touch-icon);gap:6px;
   }
-  .hearth-view .chw-task-actions { gap:6px; }
 }
-.is-mobile .hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status) {
-  flex-basis:36px;width:36px!important;height:36px!important;min-width:36px;min-height:36px!important;
+.is-mobile .hearth-view .chw-task-actions {
+  --chw-task-action-size:var(--chw-task-action-touch-size);--chw-task-action-icon-size:var(--chw-task-action-touch-icon);
 }
 @media (prefers-reduced-motion:reduce) {
   .hearth-view :is(.hearth-newnote,.chw-workspace .hearth-kanban-card,.chw-pomodoro) { transition:none; }
@@ -14330,8 +14354,7 @@ body.hearth-dv-resizing {
 .csn-row-actions{grid-column:1 / -1;grid-row:2;justify-content:flex-start;}
 
 /* --- UI audit fixes: explicit task status control ------------------------ */
-.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro,.chw-status){color:var(--text-muted);}
-.hearth-view .chw-status{color:var(--carrot-task-accent,var(--interactive-accent));}
+.hearth-view .chw-task-actions :is(.hearth-task-date-btn,.chw-pomodoro){color:var(--text-muted);}
 
 /* --- UI audit fixes: empty dashboard ------------------------------------- */
 .hearth-view .hearth-dashboard-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:min(42vh,360px);padding:28px;text-align:center;border:1px dashed var(--background-modifier-border);border-radius:14px;color:var(--text-muted);background:color-mix(in srgb,var(--background-primary) 55%,transparent);}
@@ -14440,4 +14463,19 @@ body.hearth-dv-resizing {
   flex-shrink: 0;
   background: var(--background-primary);
   padding-bottom: 8px;
+}
+
+/* Obsidian otherwise turns every aria-label, including card regions, into a
+   hover tooltip. Preserve accessible names and opt in only useful controls. */
+.carrot-selective-tooltips,
+.carrot-selective-tooltips [aria-label] {
+  --no-tooltip: true;
+}
+.carrot-selective-tooltips [data-carrot-tooltip="label"][aria-label] {
+  --no-tooltip: false;
+}
+/* A delayed host bubble may outlive its trigger after crossing nested card
+   regions. Suppress only Home's own stale bubble while over a quiet surface. */
+body.carrot-home-tooltip-quiet .tooltip.carrot-home-tooltip {
+  display: none;
 }

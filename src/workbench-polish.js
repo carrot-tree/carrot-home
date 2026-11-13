@@ -14,7 +14,7 @@ function carrotWorkbenchCore() {
 - 便签保存期间保护输入，原文成功后可单独重试草稿清理，编辑器跟随原笔记改名。
 - 返回主页局部刷新本地数据，更多菜单可主动刷新；专注和搜索继续保留。
 - 标题可读性保护随背景自动启用，也可在外观设置中关闭。
-- 修正循环任务日期、自定义项目字段、长期重复和午夜日历边界。`},...jl.filter(entry=>entry.version!=='2.2.0')];
+- 修正循环任务日期、自定义项目字段、长期重复和午夜日历边界。`},...jl.filter(entry=>entry.version!=='2.2.0')].sort((a,b)=>nf(a.version,b.version)?-1:nf(b.version,a.version)?1:0);
   const applyTitle=view=>{
     const title=view.contentEl?.querySelector('.hearth-title');
     if(title)title.classList.toggle('carrot-title-protected',core.protectTitle(view.plugin.settings,Io(view.plugin.settings)));

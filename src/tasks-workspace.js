@@ -298,32 +298,6 @@ function carrotTaskFocus() {
     control.appendChild(svg);
     control.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')e.stopPropagation();});
     for (const event of ['pointerdown','mousedown','dblclick','dragstart']) control.addEventListener(event, e => {e.stopPropagation();if(event==='dragstart')e.preventDefault();});
-    addStatusControl(ctx, task, el, container, redraw);
-  }
-  function addStatusControl(ctx, task, el, container, redraw) {
-    const taskNotes = tn(ctx), statuses = taskNotes?.settings?.customStatuses || [];
-    if (statuses.length < 2 || task.recurrence) return;
-    const actions = el.querySelector('.chw-task-actions'); if (!actions) return;
-    const statusCore = carrotTaskStatusCore();
-    const current = String(task.rawStatus ?? task.status ?? '').toLowerCase();
-    const currentLabel = statusCore.statusLabel(statuses, current) || current || '无状态';
-    const control = button(actions, '', event => {
-      const menu = new x.Menu();
-      for (const status of statuses) {
-        const value = String(status.value ?? '').trim(); if (!value) continue;
-        menu.addItem(item => item.setTitle(String(status.label || value)).setChecked(current === value.toLowerCase()).onClick(async () => {
-          try {
-            await fh(ctx, {...task, file: task.file}, value);
-            redraw?.();
-          } catch (error) { new x.Notice(`状态更新失败：${error.message || error}`); }
-        }));
-      }
-      menu.showAtMouseEvent(event);
-    }, 'chw-status');
-    control.setAttribute('aria-label', `更改任务状态：${task.text}（当前：${currentLabel}）`);
-    control.setAttribute('aria-haspopup', 'menu');
-    control.title = `更改状态（当前：${currentLabel}）`;
-    x.setIcon(control, 'circle-dot');
   }
   function enhanceTaskAccessibility(container) {
     for (const card of container.querySelectorAll('.hearth-kanban-card, .hearth-list-item.hearth-task')) {

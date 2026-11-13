@@ -37,6 +37,22 @@ test('deferred Obsidian home views do not abort header mounting on reopen',()=>{
  for(const view of [undefined,{}, {getViewType:()=> 'carrot-home-view'}, {contentEl:{}}])
   assert.doesNotThrow(()=>sandbox.TestTopArea.prototype.mount.call({},view));
 });
+test('tablets reach header mounting while phone UI remains hidden',()=>{
+ const end=source.indexOf('  const previousRender=En.prototype.render;');
+ for(const [name,platform,mounts] of [
+  ['desktop',{isMobile:false,isPhone:false,isTablet:false},true],
+  ['iPad',{isMobile:true,isPhone:false,isTablet:true},true],
+  ['phone',{isMobile:true,isPhone:true,isTablet:false},false]
+ ]){
+  const sandbox={require:()=>({Platform:platform})};
+  vm.runInNewContext(sticky+'\n'+source.slice(0,end)+'\nglobalThis.TestTopArea=TopArea;})();',sandbox);
+  let created=0;const header={createDiv(){created++;throw Error('header mounted');}};
+  const view={contentEl:{querySelector:()=>header},arrangeMode:false};
+  if(mounts)assert.throws(()=>sandbox.TestTopArea.prototype.mount.call({},view),/header mounted/,name);
+  else assert.doesNotThrow(()=>sandbox.TestTopArea.prototype.mount.call({},view),name);
+  assert.equal(created,mounts?1:0,name);
+ }
+});
 test('search has a readable floor while side cards yield and cap their size',()=>{
  assert.equal(core.centerWidth(1600),640);assert.equal(core.centerWidth(872),480);assert.equal(core.centerWidth(600),null);
  let previousSide=Infinity;

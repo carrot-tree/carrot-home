@@ -145,7 +145,9 @@ function carrotTopAreaCore() {
     mount(view){
       const content=view?.contentEl;if(!content?.querySelector)return;
       const header=content.querySelector('.hearth-header'),scroll=content.querySelector('.hearth-scroll'),inner=content.querySelector('.hearth-inner'),board=content.querySelector('.hearth-dashboard');
-      if(!header||!scroll||!inner||!board||view.arrangeMode||O.Platform.isMobile)return;
+      // Obsidian's mobile flag includes iPad. Tablets use the measured layout
+      // below; only the phone UI omits the side tools.
+      if(!header||!scroll||!inner||!board||view.arrangeMode||O.Platform.isPhone)return;
       const root=header.createDiv({cls:'cta-layer',attr:{'aria-label':'顶部留白工具'}}),left=root.createDiv({cls:'cta-notes',attr:{'aria-label':'随手晾晾'}}),right=root.createDiv({cls:'cta-focus',attr:{'aria-label':'专注一刻'}});
       const compact=root.createDiv({cls:'cta-compact',attr:{'aria-label':'随手晾晾与专注一刻'}});
       const compactNotes=button(compact,'随手晾晾：打开全部便签',()=>new CarrotStickyUI.Manager(this).open());icon(compactNotes,'sticky-note');const compactNotesText=compactNotes.createSpan();
