@@ -73,7 +73,7 @@ iPad 等平板按实际可用空间展示两侧工具，较窄时使用紧凑入
 3. 选择跟踪最新版本，添加后在社区插件列表启用 **Carrot Home**。
 4. 从左侧功能区或命令面板打开 **Carrot Home**。
 
-当前版本为 **2.2.0「安心工作台」**，设计与验收范围见 [版本设计](docs/next-version-2.2.md)。下载与发布说明请查看 [Release](https://github.com/carrot-tree/carrot-home/releases/latest)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
+当前版本为 **2.2.2**。标题可读性保护默认关闭，标题保持纯文字；可从 **设置 → Carrot Home → 外观 → 标题可读性保护** 手动开启，升级保留已有明确选择。下载与发布说明请查看 [Release](https://github.com/carrot-tree/carrot-home/releases/latest)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
 
 ### 按需安装配套插件
 

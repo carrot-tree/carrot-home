@@ -35,12 +35,14 @@ test('other views never refresh Home, and the menu keeps existing items and refu
   view.arrangeMode=true;menu.items[1].run();assert.equal(h.refreshes.length,0);
   view.arrangeMode=false;menu.items[1].run();assert.equal(h.refreshes.length,1);
 });
-test('automatic title protection follows the resolved background and preserves an explicit opt-out',()=>{
+test('title protection defaults off and preserves explicit background-aware choices',()=>{
   const {core}=harness(),image={kind:'image',value:'wallpaper.png',layout:'full',opacity:1};
-  assert.equal(core.protectTitle({},image),true);assert.equal(core.protectTitle({headerReadability:'none'},image),false);
-  assert.equal(core.protectTitle({}, {...image,layout:'banner'}),false);assert.equal(core.protectTitle({}, {...image,opacity:0}),false);
+  assert.equal(core.titleMode(), 'none');assert.equal(core.titleMode({}), 'none');
+  assert.equal(core.protectTitle({},image),false);assert.equal(core.protectTitle({headerReadability:'none'},image),false);
+  assert.equal(core.protectTitle({headerReadability:'auto'},image),true);
+  assert.equal(core.protectTitle({headerReadability:'auto'}, {...image,layout:'banner'}),false);assert.equal(core.protectTitle({headerReadability:'auto'}, {...image,opacity:0}),false);
   assert.equal(core.protectTitle({}, {kind:'none'}),false);assert.equal(core.protectTitle({headerReadability:'always'},{kind:'none'}),true);
-  assert.equal(core.titleMode({headerReadability:'legacy-or-broken'}),'auto');
+  assert.equal(core.titleMode({headerReadability:'legacy-or-broken'}),'none');
 });
 
 test('a deferred focus repaint is canceled when focus moves or the plugin unloads',async()=>{

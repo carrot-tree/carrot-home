@@ -3,7 +3,7 @@
 function carrotWorkbenchCore() {
   // Schedule owns subscription refresh: rebuilding it here could fetch ICS.
   const dataKinds=['tasks','recent','bookmarks','favorites','stats','search','heatmap'];
-  const titleMode=settings=>['auto','always','none'].includes(settings?.headerReadability)?settings.headerReadability:'auto';
+  const titleMode=settings=>['auto','always','none'].includes(settings?.headerReadability)?settings.headerReadability:'none';
   const protectTitle=(settings,background)=>titleMode(settings)==='always'||titleMode(settings)==='auto'&&background?.layout!=='banner'&&background?.kind!=='none'&&Number(background?.opacity??1)>0&&(background?.kind==='default'||!!background?.value);
   return {dataKinds,titleMode,protectTitle};
 }
@@ -61,8 +61,8 @@ function carrotWorkbenchCore() {
   const previousHomeSection=gs.prototype.homeSection;
   gs.prototype.homeSection=function(container,...args){
     const result=previousHomeSection.call(this,container,...args);
-    new O.Setting(container).setName('标题可读性保护').setDesc('为壁纸上的标题加一层轻薄衬底，不改变位置；默认仅在整页背景启用。').addDropdown(control=>control
-      .addOption('auto','自动：整页背景时保护').addOption('always','始终保护').addOption('none','关闭：保留原样')
+    new O.Setting(container).setName('标题可读性保护').setDesc('默认关闭，标题保持纯文字；可手动开启轻薄衬底，不改变位置。').addDropdown(control=>control
+      .addOption('none','关闭：保留原样').addOption('auto','自动：整页背景时保护').addOption('always','始终保护')
       .setValue(core.titleMode(this.plugin.settings)).onChange(async value=>{this.plugin.settings.headerReadability=value;await this.save();}));
     return result;
   };

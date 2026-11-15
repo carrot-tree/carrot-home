@@ -2040,7 +2040,9 @@ if(cfg.kanbanCollapsed?.includes(oldKey)){cfg.kanbanCollapsed=cfg.kanbanCollapse
 /* Carrot Home owns its release notes. Keep per-device acknowledgement outside
  * data.json so merely loading a new plugin version cannot rewrite layouts. */
 ;(()=>{
-const HhCarrotReleaseNotes=[{version:"2.2.1",date:"2026-11-13",markdown:`### 平板适配与任务按钮优化
+const HhCarrotReleaseNotes=[{version:"2.2.2",date:"2026-11-15",markdown:`### 标题默认无底色
+- 标题可读性保护默认关闭，新安装和未设置过此项的配置均使用纯文字标题。
+- 可在「设置 → Carrot Home → 外观」手动开启；保留已有明确选择。`},{version:"2.2.1",date:"2026-11-13",markdown:`### 平板适配与任务按钮优化
 - 平板按实际可用宽度展示“随手晾晾”和“专注一刻”，窄分屏保留紧凑入口。
 - 精简卡片、正文和明确文字按钮的悬停解释，修复跨区域残留提示，保留必要图标提示和可访问名称。
 - 任务卡片底部只保留日期与番茄钟两个按钮，统一对齐，并随小／中／大卡片同步缩放。
