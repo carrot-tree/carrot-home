@@ -1,0 +1,8 @@
+{
+  "name": "carrot-home",
+  "private": true,
+  "devDependencies": {
+    "jsdom": "26.1.0",
+    "moment": "2.30.1"
+  }
+}

@@ -338,6 +338,6 @@ function carrotTopAreaCore() {
     this.addCommand({id:'sticky-notes-all',name:'随手晾晾：全部便签',callback:()=>new CarrotStickyUI.Manager(this.topArea).open()});
     this.addCommand({id:'top-tools-settings',name:'顶部工具：打开设置',callback:()=>{this.app.saveLocalStorage('hearth-settings-tab','top-tools');this.app.setting.open();this.app.setting.openTabById('carrot-home');}});
     this.addCommand({id:'focus-moment-open',name:'专注一刻：打开',callback:()=>this.topArea.focus.openPanel()});
-    this.app.workspace.onLayoutReady(()=>this.topArea.remount());return result;
+    this.whenHomeLayoutReady(()=>this.topArea.remount());return result;
   };
 })();

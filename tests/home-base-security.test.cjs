@@ -233,7 +233,7 @@ test('release validation rejects the old unsafe runtime patterns and global moda
     assert.throws(()=>run(runtime+change),change);
   }
   assert.throws(()=>run(runtime.replace('var ls=', 'render(card,require);var ls=')));
-  assert.throws(()=>run(runtime,'','ReSoJoT'));
+  assert.throws(()=>run(runtime+'/* ReSoJoT in any bundled module */'));
   for (const selector of ['.modal.mod-community-plugin .modal-title','.theme-dark .modal.mod-community-plugin>.modal-title::before',
     '.workspace .mod-community-plugin.modal:not(.carrot-home-modal) .modal-title']) {
     assert.throws(()=>run(runtime,selector+' {padding:0}'),selector);
@@ -254,7 +254,7 @@ test('vault liveness listeners do not bypass the repository for task or schedule
     let callback,paints=0;
     const sandbox={un:()=>({liveness:{mode:'vault'},render(){paints++;}}),Yo:(_el,i)=>i,Se:{Component:class{},debounce:fn=>fn}};
     const mount=vm.runInNewContext(program+';yD',sandbox);
-    const view={plugin:{taskRepository:{}}},component={removeChild(){},addChild(){}};
+    const view={plugin:{taskRepository:{}}},component={removeChild(){},addChild(){},register(){}};
     mount(view,{kind},new Element,component,{subscribe:fn=>{callback=fn;}});
     for(const event of ['modify','meta']) callback({kind:event,file:{path:'ordinary.md'}});
     assert.equal(paints,kind==='recent'?3:1,kind);

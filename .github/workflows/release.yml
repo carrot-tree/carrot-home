@@ -24,6 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: npm ci
       - name: Verify release and run tests
         env:
           RELEASE_TAG: ${{ inputs.version || github.ref_name }}

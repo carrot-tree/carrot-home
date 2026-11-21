@@ -40,10 +40,10 @@ function carrotWorkbenchCore() {
   const previousOnload=bs.prototype.onload;
   bs.prototype.onload=async function(...args){
     const result=await previousOnload.apply(this,args);
-    this.register(()=>window.clearTimeout(this.__carrotFocusRefreshTimer));
+    this.register(()=>{window.clearTimeout(this.__carrotFocusRefreshTimer);this.liveRefreshDebounced.cancel();});
     this.addCommand({id:'refresh-workbench-data',name:'刷新工作台数据',callback:()=>this.refreshDataCards(core.dataKinds)});
     this.registerEvent(this.app.workspace.on('file-open',()=>this.liveRefreshDebounced()));
-    this.app.workspace.onLayoutReady(()=>{
+    this.whenHomeLayoutReady(()=>{
       const bookmarks=this.app.internalPlugins.getPluginById('bookmarks')?.instance;
       if(typeof bookmarks?.on==='function')this.registerEvent(bookmarks.on('changed',()=>this.liveRefreshDebounced()));
     });

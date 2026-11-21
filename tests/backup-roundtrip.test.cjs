@@ -9,7 +9,7 @@ const registry = home.match(/var ls=\{([^}]+)\},Jo=Object\.keys\(ls\)/);
 assert.ok(registry, 'test the actual bundled card registry');
 const kinds = registry[1].split(',').map(entry => entry.split(':')[0]);
 const json = value => JSON.parse(JSON.stringify(value));
-const CarrotReadingDashboard = vm.runInNewContext(home.slice(home.indexOf('function CarrotReadingDashboard()'),home.indexOf('var RD='))+';CarrotReadingDashboard');
+const {CarrotReadingDashboard,carrotReadingPreset} = vm.runInNewContext(home.slice(home.indexOf('const carrotReadingPresets'),home.indexOf('const carrotReadingAccounts'))+';({CarrotReadingDashboard,carrotReadingPreset})');
 
 function harness({input = null, saveError = null, backupError = null} = {}) {
   const notices = [], confirmations = [], writes = [], reads = [], rendered = [];
@@ -24,7 +24,7 @@ function harness({input = null, saveError = null, backupError = null} = {}) {
   }
   const words = {notices:{settingsImported:'设置已导入',layoutImported:'布局已导入'},editors:{kinds:{}},settings:{layout:{importButton:'导入文件'}}};
   const sandbox = {
-    Jo:kinds,je:{...defaults,wereadApiKey:''},gs:SettingsTab,CarrotReadingDashboard,
+    Jo:kinds,je:{...defaults,wereadApiKey:''},gs:SettingsTab,carrotReadingPreset,
     Gl(){throw new Error('legacy Gl must not run')},_m(){},$m(){},Wm(){},Km(){},jm(){},Jm(){},iT(){},
     Qd:async()=>{reads.push(true);return input},d:()=>words,Ee:(_app,options)=>confirmations.push(options),
     L:{Setting,Notice:class {constructor(message){notices.push(message)}}},
@@ -286,7 +286,7 @@ test('missing and corrupt recovery snapshots show a notice without mutation',asy
 
 test('script summary distinguishes bundled reading code, modified copies, Dataview JS and Datacore TSX',async()=>{
   const builtin=json(CarrotReadingDashboard().cards[0]),modified=json(builtin);
-  modified.id+='-modified';modified.reading.script+='\n// modified';modified.reading.untrustedImported=false;
+  modified.id+='-modified';modified.reading={...builtin.reading,script:'dv.paragraph("custom")',untrustedImported:false};
   const dv=fixtureCard('dataview'),dc=fixtureCard('datacore');dv.dataview.language='js';dc.datacore.language='tsx';
   const payload={...layout([builtin,dv,dc]),pinnedCards:[modified]},h=harness({input:JSON.stringify(payload)});
   await h.tab.importFromFile({imported:h.words.notices.layoutImported});

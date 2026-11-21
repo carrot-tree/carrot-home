@@ -1,6 +1,6 @@
 /* Backups are JSON documents, not a second, lossy card configuration format.
  * Validate a complete candidate before changing any live settings. */
-function carrotBackupReliabilityCore({kinds, defaults = {}, builtInReadingScripts = new Set()}) {
+function carrotBackupReliabilityCore({kinds, defaults = {}}) {
   const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
   const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const blocked = new Set(['__proto__', 'prototype', 'constructor']);
@@ -8,7 +8,8 @@ function carrotBackupReliabilityCore({kinds, defaults = {}, builtInReadingScript
   const layoutKeys = ['dashboards', 'activeDashboardId', 'pinnedCards', 'gridColumns', 'rowHeight', 'fitToPage', 'maxWidth', 'favorites'];
   const secret = key => /^(wereadapikey|pat|apikey|accesstoken|refreshtoken|authtoken|bearertoken|authorization|password|secret|clientsecret|token|credentials)$/.test(key.replace(/[-_]/g, '').toLowerCase());
   const fail = message => { throw new Error(message); };
-  const customReading = item => item.kind === 'reading' && item.reading?.script?.trim() && !builtInReadingScripts.has(item.reading.script);
+  // Even an inactive custom script behind a native preset must keep its import gate.
+  const customReading = item => item.kind === 'reading' && item.reading?.script?.trim() && !carrotReadingPreset({script:item.reading.script});
   function copy(value, stripSecrets = false) {
     let nodes = 0;
     const seen = new Set();
@@ -254,8 +255,7 @@ function carrotBackupReliabilityCore({kinds, defaults = {}, builtInReadingScript
 }
 
 ;(() => {
-  const builtInReadingScripts = new Set(typeof CarrotReadingDashboard === 'function' ? CarrotReadingDashboard().cards.map(card => card.reading?.script) : []);
-  const core = carrotBackupReliabilityCore({kinds:Jo,defaults:je,builtInReadingScripts});
+  const core = carrotBackupReliabilityCore({kinds:Jo,defaults:je});
   Gl = (value, index) => core.card(value, index);
   _m = settings => core.exportLayout(settings);
   $m = settings => JSON.stringify(core.exportLayout(settings), null, 2);
@@ -320,8 +320,8 @@ function carrotBackupReliabilityCore({kinds, defaults = {}, builtInReadingScript
     let message = `${String(options.message || '').replace(/无法撤销[。！!]?/g, '').trim()} 将恢复 ${info.dashboards} 个仪表盘、${info.cards} 张卡片${typeNames ? `（${typeNames}）` : ''}。`;
     if (info.scripts) {
       const details = Object.entries(info.scriptTypes).map(([type, count]) => `${type} ${count} 张`).join('、');
-      message += ` 其中 ${info.scripts} 张包含可执行脚本（${details}）。脚本可能读写笔记、使用本机凭据或访问网络。仅在信任来源时继续。`;
-      if (info.scriptTypes['Dataview JS'] || info.scriptTypes['Datacore JS/TS']) message += ' 启用相应插件后，Dataview 或 Datacore 脚本可能在打开卡片时立即运行。';
+      message += ` 其中 ${info.scripts} 张包含可执行脚本（${details}）。请先检查脚本及来源。`;
+      if (info.scriptTypes['Dataview JS'] || info.scriptTypes['Datacore JS/TS']) message += ' 启用相应插件后，Dataview 或 Datacore 脚本可能在打开卡片时立即运行，读写笔记或访问网络。';
       if (info.scriptTypes['自定义阅读脚本']) message += ' 自定义阅读脚本将暂停，直至你在卡片中确认运行。';
     }
     message += ' API Key、令牌等凭据不从备份导入。确认后会先保存一份当前设置的恢复备份。便签原文和顶部索引不包含在设置备份中。';
@@ -374,7 +374,7 @@ function carrotBackupReliabilityCore({kinds, defaults = {}, builtInReadingScript
       return;
     }
     const config = card.reading, script = config?.script;
-    if (config?.untrustedImported === true && script && trustedScripts.get(config) !== script) {
+    if (config?.untrustedImported === true && script && !carrotReadingPreset(config) && trustedScripts.get(config) !== script) {
       const box = container.createDiv('hearth-reading');
       box.createDiv({cls:'hearth-reading-hint',text:'此卡片包含从备份导入的自定义脚本，已暂停运行。请先检查代码及来源。'});
       const details = box.createEl('details');
@@ -382,7 +382,7 @@ function carrotBackupReliabilityCore({kinds, defaults = {}, builtInReadingScript
       details.createEl('pre', {text:script});
       const button = box.createEl('button', {text:'本次会话信任此脚本',attr:{type:'button'}});
       button.addEventListener('click', () => Ee(ctx.app, {
-        title:'信任并运行这个阅读脚本？',message:'此脚本可以读写笔记、使用本机凭据并访问网络。请仅信任你已检查的代码。',confirmText:'信任并运行',
+        title:'信任并运行这个阅读脚本？',message:'此脚本将在隔离的读书卡片中运行。请仅信任你已检查的代码。',confirmText:'信任并运行',
         onConfirm:() => {
           if (button.isConnected === false || card.reading !== config || config.script !== script) return;
           trustedScripts.set(config, script);

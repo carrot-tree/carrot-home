@@ -26,9 +26,7 @@ for (const forbidden of ['/Users/', '胡萝卜笔记', 'share-defaults.json', 's
     '打开胡萝卜工作台', '背景2.png', 'ondreu/hearth/issues', 'raw.githubusercontent.com/ondreu/hearth']) {
     assert.ok(!runtime.toLowerCase().includes(forbidden.toLowerCase()), `Unexpected runtime dependency or local identifier: ${forbidden}`);
 }
-for (const name of ['src/home-base.js', 'resources/sample-notes.json']) {
-    assert.doesNotMatch(read(name), /resojot/i, `Private plugin reference in ${name}`);
-}
+assert.doesNotMatch(runtime, /resojot/i, 'Private plugin reference in main.js');
 checkModalScope(read('styles.css'));
 assert.doesNotMatch(runtime, /console\.warn\s*\(\s*[`'"]Carrot Home[^;`'"]{0,180}(?:settings tab queried|rendering settings via|loaded \(Obsidian API)/,
     'Normal startup and settings rendering must stay quiet');

@@ -126,6 +126,7 @@ Carrot Home 是 [Hearth](https://github.com/ondreu/Hearth) 的定制发行版，
 使用 Node.js 22 或以上：
 
 ```sh
+npm ci
 node scripts/build-runtime.cjs
 node --check main.js
 node scripts/verify-release.cjs
