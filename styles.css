@@ -19,6 +19,13 @@
 	background-position: center;
 }
 
+.hearth-bg.is-default-bg {
+  background-image: radial-gradient(ellipse at 18% 12%, #f0e2cd, transparent 62%), linear-gradient(140deg, #edf2ed, #dce6e8 68%, #e9e1d8);
+}
+.theme-dark .hearth-bg.is-default-bg {
+  background-image: radial-gradient(ellipse at 18% 12%, #3c3534, transparent 62%), linear-gradient(140deg, #20292b, #283039 68%, #342e32);
+}
+
 /* The live weather sky as the board's backdrop. It is the same element the
  * weather card's artistic style draws (see sky.ts), so it arrives styled —
  * all it needs here is to fill the layer instead of sitting in a card's flex
@@ -10429,44 +10436,6 @@ body.hearth-dv-resizing {
   color: var(--text-on-accent) !important;
 }
 
-/* Modal titles and setting groups: reuse the same accent stripe as card titles.
-   This covers dashboard settings, card editors, calendar/event/task modals, etc. */
-.modal.mod-community-plugin .modal-title,
-.hearth-card-picker-modal .modal-title,
-.hearth-setup-modal .modal-title,
-.hearth-whatsnew-modal .modal-title,
-.hearth-calendar-modal .modal-title,
-.hearth-sched-modal .modal-title,
-.hearth-taskdetail-modal .modal-title,
-.hearth-taskfilter-modal .modal-title,
-.hearth-tasksort-modal .modal-title,
-.hearth-taskfields-modal .modal-title {
-  position: relative;
-  padding-left: 14px;
-  font-weight: 850;
-  letter-spacing: -0.02em;
-}
-
-.modal.mod-community-plugin .modal-title::before,
-.hearth-card-picker-modal .modal-title::before,
-.hearth-setup-modal .modal-title::before,
-.hearth-whatsnew-modal .modal-title::before,
-.hearth-calendar-modal .modal-title::before,
-.hearth-sched-modal .modal-title::before,
-.hearth-taskdetail-modal .modal-title::before,
-.hearth-taskfilter-modal .modal-title::before,
-.hearth-tasksort-modal .modal-title::before,
-.hearth-taskfields-modal .modal-title::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.18em;
-  bottom: 0.18em;
-  width: 4px;
-  border-radius: 999px;
-  background: var(--interactive-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--interactive-accent) 16%, transparent);
-}
 
 .hearth-modal-ribbon {
   border-bottom-color: color-mix(in srgb, var(--interactive-accent) 24%, var(--background-modifier-border));
@@ -10655,18 +10624,8 @@ body.hearth-dv-resizing {
   border-color: var(--carrot-task-line) !important;
 }
 
-/* The previous broad community-plugin modal rule is intentionally neutralized
-   so Carrot Home doesn't recolor unrelated plugin popups. Re-enable it only
-   for Carrot Home tabbed modals below. */
-.modal.mod-community-plugin .modal-title::before {
-  content: none !important;
-}
 
-.modal.mod-community-plugin .modal-title {
-  padding-left: 0;
-}
-
-.modal.mod-community-plugin:has(.hearth-tabbed-modal) .modal-title,
+.modal:has(.hearth-tabbed-modal) .modal-title,
 .hearth-card-picker-modal .modal-title,
 .hearth-setup-modal .modal-title,
 .hearth-whatsnew-modal .modal-title,
@@ -10684,7 +10643,7 @@ body.hearth-dv-resizing {
   letter-spacing: -0.02em;
 }
 
-.modal.mod-community-plugin:has(.hearth-tabbed-modal) .modal-title::before,
+.modal:has(.hearth-tabbed-modal) .modal-title::before,
 .hearth-card-picker-modal .modal-title::before,
 .hearth-setup-modal .modal-title::before,
 .hearth-whatsnew-modal .modal-title::before,
@@ -10866,45 +10825,7 @@ body.hearth-dv-resizing {
   color: var(--text-on-accent) !important;
 }
 
-/* Carrot Home modal-title specificity fix: keep unrelated community plugin
-   modals neutral, but re-enable the Tasks-style accent for Carrot Home modals. */
-.modal.mod-community-plugin:has(.hearth-tabbed-modal) .modal-title,
-.modal.mod-community-plugin.hearth-card-picker-modal .modal-title,
-.modal.mod-community-plugin.hearth-setup-modal .modal-title,
-.modal.mod-community-plugin.hearth-whatsnew-modal .modal-title,
-.modal.mod-community-plugin.hearth-calendar-modal .modal-title,
-.modal.mod-community-plugin.hearth-sched-modal .modal-title,
-.modal.mod-community-plugin.hearth-taskdate-modal .modal-title,
-.modal.mod-community-plugin.hearth-taskdetail-modal .modal-title,
-.modal.mod-community-plugin.hearth-taskfilter-modal .modal-title,
-.modal.mod-community-plugin.hearth-tasksort-modal .modal-title,
-.modal.mod-community-plugin.hearth-taskfields-modal .modal-title,
-.modal.mod-community-plugin.hearth-event-modal .modal-title {
-  padding-left: 14px !important;
-}
 
-.modal.mod-community-plugin:has(.hearth-tabbed-modal) .modal-title::before,
-.modal.mod-community-plugin.hearth-card-picker-modal .modal-title::before,
-.modal.mod-community-plugin.hearth-setup-modal .modal-title::before,
-.modal.mod-community-plugin.hearth-whatsnew-modal .modal-title::before,
-.modal.mod-community-plugin.hearth-calendar-modal .modal-title::before,
-.modal.mod-community-plugin.hearth-sched-modal .modal-title::before,
-.modal.mod-community-plugin.hearth-taskdate-modal .modal-title::before,
-.modal.mod-community-plugin.hearth-taskdetail-modal .modal-title::before,
-.modal.mod-community-plugin.hearth-taskfilter-modal .modal-title::before,
-.modal.mod-community-plugin.hearth-tasksort-modal .modal-title::before,
-.modal.mod-community-plugin.hearth-taskfields-modal .modal-title::before,
-.modal.mod-community-plugin.hearth-event-modal .modal-title::before {
-  content: "" !important;
-  position: absolute;
-  left: 0;
-  top: 0.18em;
-  bottom: 0.18em;
-  width: 4px;
-  border-radius: 999px;
-  background: var(--carrot-task-accent, var(--interactive-accent));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--carrot-task-accent, var(--interactive-accent)) 16%, transparent);
-}
 
 /* Calendar List view: give task titles more room, hide recurring text badges,
    and render priority as a compact colored dot instead of a word chip. */
@@ -13487,6 +13408,17 @@ body.hearth-dv-resizing {
 	width: 100%;
 	max-width: 100%;
 }
+.hearth-reading .hearth-reading-refresh { float: right; margin: 0 0 4px 6px; }
+.hearth-reading-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; }
+.hearth-reading-metric { display: grid; gap: 3px; padding: 5px 8px; background: var(--background-secondary); border-radius: 6px; }
+.hearth-reading small { color: var(--text-muted); }
+.hearth-reading-row, .hearth-reading-note { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: var(--text-normal); }
+.hearth-reading-row img { width: 28px; height: 40px; object-fit: cover; border-radius: 3px; }
+.hearth-reading-row-body { min-width: 0; overflow-wrap: anywhere; }
+.hearth-reading-bar { display: grid; grid-template-columns: minmax(45px,auto) 1fr auto; gap: 6px; align-items: center; }
+.hearth-reading-bar progress { width: 100%; }
+.hearth-reading-tabs { margin-bottom: 6px; }
+.hearth-reading-custom { width: 100%; min-height: 8em; border: 0; }
 .hearth-reading-setup {
 	display: flex;
 	flex-direction: column;
