@@ -18,7 +18,7 @@ class Element{
  change(value){if(this.disabled)return;this.value=value;for(const fn of this.handlers.change||[])fn()}
 }
 function harness({getIcon}={}){
- const modals=[],notices=[],writes=[],executed=[],opened=[],urls=[],events=new Map(),storage=new Map([['tab','shortcuts']]);let fail=false;
+ const modals=[],notices=[],writes=[],executed=[],opened=[],urls=[],confirmations=[],events=new Map(),storage=new Map([['tab','shortcuts']]);let fail=false;
  class Modal{constructor(app){this.app=app;this.contentEl=new Element();this.modalEl=new Element();this.titleEl={setText:value=>this.title=value}}open(){modals.push(this);this.onOpen?.();return this}close(){this.closed=true}}
  class Fuzzy extends Modal{setPlaceholder(text){this.placeholder=text} }
  class Setting{
@@ -41,12 +41,13 @@ function harness({getIcon}={}){
  const lifecycle={register(){},registerEvent(){},registerDomEvent(){}};
  const view={app,plugin,contentEl:new Element(),renderChild:lifecycle,render(){plugin.refreshViews()}};
  const sandbox={require:()=>({Setting,FuzzySuggestModal:Fuzzy,getIcon,setIcon:(el,name)=>{el.icon=name},Notice:class{constructor(text){notices.push(text)}}}),CarrotHomeModal:Modal,carrotHomeStyleModal(){},ks:class extends Fuzzy{},Bl:DashboardModal,X:s=>s.dashboards.find(item=>item.id===s.activeDashboardId),U:async(_view,file,_kind,event)=>opened.push({file,event}),window:{open:(...args)=>urls.push(args)},URL,console,
+  Ee:(_app,options)=>confirmations.push(options),
   CD(v){const zone=v.contentEl.createDiv('hearth-arrange-zone');zone.createEl('button',{cls:'hearth-tool-btn',attr:{'aria-label':'改变布局'}})}};
  vm.createContext(sandbox);vm.runInContext(source,sandbox);const core=sandbox.carrotDashboardShortcutsCore();
  const modal=(dash=settings.dashboards[1])=>{const m=new sandbox.Bl(view,dash);m.hearthRenderShell();return m};
  const find=(root,text)=>root.querySelectorAll('button').find(el=>el.attrs['aria-label']===text||el.textContent===text);
  const field=(root,name)=>root.querySelectorAll('input,select').find(el=>el.settingName===name);
- return{core,app,plugin,settings,view,api:sandbox,modal,modals,notices,writes,executed,opened,urls,events,storage,find,field,fail:value=>fail=value,files};
+ return{core,app,plugin,settings,view,api:sandbox,modal,modals,notices,writes,executed,opened,urls,confirmations,events,storage,find,field,fail:value=>fail=value,files};
 }
 
 test('undefined inherits old global commands, explicit empty suppresses them, and dashboards stay independent',()=>{
@@ -62,6 +63,37 @@ test('custom targets validate required values and reject code, path traversal an
  assert.equal(core.normalize({...base,target:'obsidian://open?vault=Test'}).type,'url');
  assert.equal(core.normalize({...base,type:'file',target:'资料/A.md'}).target,'资料/A.md');
  assert.throws(()=>core.validate([base,base]),/ID 重复/);
+});
+
+test('fallback shortcuts include only the daily note and TaskNotes timer',()=>{
+ const {core}=harness();
+ assert.deepEqual(json(core.effective({},{}).map(a=>a.id)),['daily-note','tasknotes-pomodoro']);
+});
+
+test('shortcut observer watches only direct body children and refreshes on modal removal',()=>{
+ const h=harness(),observers=[],cleanups=[];
+ class Observer {
+  constructor(fn){this.notify=fn;observers.push(this);}
+  observe(node,options){Object.assign(this,{node,options});}
+  disconnect(){this.disconnected=true;}
+ }
+ const doc={body:{},defaultView:{MutationObserver:Observer}};
+ h.view.contentEl.ownerDocument=doc;h.view.renderChild.register=fn=>cleanups.push(fn);
+ h.api.CD(h.view,{});const [observer]=observers;
+ assert.equal(observer.node,doc.body);assert.deepEqual(json(observer.options),{childList:true,subtree:false});
+ const action=h.view.contentEl.querySelector('.csh-toolbar-action');h.app.commands.items=[];
+ observer.notify([{removedNodes:[{nodeType:3}]}]);assert.equal(action.disabled,false);
+ observer.notify([{removedNodes:[{nodeType:1,matches:selector=>selector.includes('.modal-container')}]}]);assert.equal(action.disabled,true);
+ cleanups.forEach(fn=>fn());assert.equal(observer.disconnected,true);
+});
+
+test('closing a dirty shortcut form preserves edits until discard is confirmed, including after a tab switch',()=>{
+ const h=harness(),m=h.modal(),before=JSON.stringify(h.settings);
+ m.shortcutDirty();h.storage.set('tab','general');m.hearthRenderShell();m.close();
+ assert.match(h.confirmations[0].title,/放弃未保存/);assert.equal(m.closed,undefined);assert.equal(m.cshSession.dirty,true);
+ m.close();h.confirmations.at(-1).onConfirm();assert.equal(m.closed,true);
+ assert.equal(h.confirmations.length,2);assert.equal(JSON.stringify(h.settings),before);assert.equal(h.writes.length,0);
+ const clean=h.modal();clean.close();assert.equal(clean.closed,true);assert.equal(h.confirmations.length,2);
 });
 test('installed plugin choices list disabled and commandless states and use exact registered namespaces',()=>{
  const h=harness(),items=h.core.plugins(h.app),alpha=items.find(p=>p.id==='alpha');

@@ -206,7 +206,8 @@ function carrotTaskFocus() {
 }
 
 ;(() => {
-  const core = carrotTaskWorkspaceCore(), sessions = new WeakMap();
+  const core = carrotTaskWorkspaceCore(), sessions = new WeakMap(), projectFiles = new WeakMap();
+  const cardLifecycles = new WeakMap();
   const pomodoro = carrotTaskPomodoroBridge();
   const taskFocus = carrotTaskFocus();
   const clone = value => JSON.parse(JSON.stringify(value));
@@ -236,10 +237,34 @@ function carrotTaskFocus() {
       return {...task, workspaceProjects: projects, workspaceAccounts: account.values, workspaceInherited: account.inherited};
     });
   }
+  function markedProjects({app, plugin}) {
+    if (projectFiles.has(app)) return projectFiles.get(app);
+    const files = new Set();
+    const update = (file, cache = app.metadataCache.getFileCache(file)) => {
+      if (file.extension?.toLowerCase() === 'md' && cache?.frontmatter?.carrotProject === true) files.add(file);
+      else files.delete(file);
+    };
+    const visit = (file, action) => {
+      if (file.children) file.children.forEach(child => visit(child, action));
+      else action(file);
+    };
+    for (const file of app.vault.getMarkdownFiles()) update(file);
+    projectFiles.set(app, files);
+    plugin.registerEvent(app.vault.on('create', file => visit(file, update)));
+    plugin.registerEvent(app.vault.on('delete', file => visit(file, child => files.delete(child))));
+    // Obsidian keeps TFile references across moves. Only an extension change
+    // can affect membership; option labels and paths are read from the live file.
+    plugin.registerEvent(app.vault.on('rename', (file, oldPath) => {
+      if (!file.children && (file.extension?.toLowerCase() !== 'md' || !/\.md$/i.test(oldPath))) update(file);
+    }));
+    plugin.registerEvent(app.metadataCache.on('changed', (file, _text, cache) => update(file, cache)));
+    plugin.register(() => projectFiles.delete(app));
+    return files;
+  }
   function projectOptions(ctx, tasks) {
     const options = new Map();
     for (const task of tasks) for (const p of task.workspaceProjects) options.set(p.id, p);
-    for (const file of ctx.app.vault.getMarkdownFiles()) if (fm(ctx, file).carrotProject === true) options.set(file.path, {id: file.path, label: file.basename, file});
+    for (const file of markedProjects(ctx)) options.set(file.path, {id: file.path, label: file.basename, file});
     const names = new Map();
     for (const p of options.values()) names.set(p.label, (names.get(p.label) || 0)+1);
     return [...options.values()].map(p => ({...p, label: names.get(p.label)>1 ? `${p.label} · ${p.id}` : p.label}));
@@ -381,7 +406,7 @@ function carrotTaskFocus() {
       sync(); input.focus();
     }
   }
-  function manageAccounts(ctx, redraw) {
+  function manageAccounts(ctx, cfg, redraw, commit) {
     const modal = new CarrotHomeModal(ctx.app); modal.titleEl.setText('内容账号');
     const render = () => {
       modal.contentEl.empty();
@@ -392,6 +417,22 @@ function carrotTaskFocus() {
           if ((ctx.plugin.settings.contentAccounts || []).some(a => a !== account && a.name === name)) throw new Error('这个账号已存在');
           account.name = name; await save(ctx); render(); redraw();
         }).open());
+        button(row, '删除', () => Ee(ctx.app, {
+          title: `删除账号「${account.name}」？`,
+          message: '此操作只从账号目录移除该账号，并清除当前筛选中的选择。任务和项目笔记及其中的账号 ID 都会保留。',
+          confirmText: '删除账号',
+          onConfirm: async () => {
+            const accounts = ctx.plugin.settings.contentAccounts, s = state(cfg);
+            const at = accounts?.indexOf(account) ?? -1;
+            if (at < 0 || s.saving) return;
+            accounts.splice(at, 1);
+            if (!await commit({...s.filters, accounts:s.filters.accounts.filter(id => id !== account.id)})) {
+              accounts.splice(at, 0, account);
+              redraw();
+            }
+            render();
+          }
+        }));
       }
       button(modal.contentEl, '添加内容账号', () => new NameModal(ctx.app, '添加内容账号', '', async name => {
         const accounts = ctx.plugin.settings.contentAccounts ||= [];
@@ -459,9 +500,78 @@ function carrotTaskFocus() {
       }catch(error){new x.Notice(`创建失败：${error.message}`);submit.disabled=false;}
     },'mod-cta');modal.open();title.focus();
   }
+  function workspaceSearch(lifecycle, container, s, redraw) {
+    let box = container.__chwSearchBox;
+    if (!box) {
+      box = container.__chwSearchBox = document.createElement('div');
+      box.className = 'chw-searchbox';
+      x.setIcon(box.createSpan({cls:'chw-search-icon',attr:{'aria-hidden':'true'}}), 'search');
+      const input = box.createEl('input', {cls:'chw-search',attr:{type:'search',placeholder:'搜索任务或项目…','aria-label':'搜索任务或项目'}});
+      const clear = button(box, '', () => { apply('', true); input.focus(); }, 'chw-search-clear');
+      clear.setAttribute('aria-label','清除搜索');clear.title='清除搜索';x.setIcon(clear,'x');
+      let timer;
+      const cancel = () => { window.clearTimeout(timer); timer = undefined; };
+      const apply = (value, immediate) => {
+        cancel();
+        s.query = value;
+        clear.hidden = !value;
+        if (immediate) box.refresh();
+        else timer = window.setTimeout(() => { if (container.isConnected) box.refresh(); }, 150);
+      };
+      input.addEventListener('compositionstart', () => { cancel(); container.__chwComposing = true; });
+      input.addEventListener('compositionend', () => { container.__chwComposing = false; apply(input.value, true); });
+      input.addEventListener('input', event => {
+        if (!event.isComposing && !container.__chwComposing && input.value !== s.query) apply(input.value, !input.value);
+      });
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !event.isComposing && !container.__chwComposing && input.value) {
+          event.preventDefault(); event.stopPropagation(); apply('', true);
+        }
+      });
+      box.cancelSearch = cancel;
+      lifecycle.register?.(cancel);
+    }
+    // A repository or filter redraw may have already applied the pending query.
+    box.cancelSearch();
+    box.refresh = redraw;
+    const input = box.querySelector('input');
+    if (input.value !== s.query) input.value = s.query;
+    box.querySelector('.chw-search-clear').hidden = !s.query;
+    return box;
+  }
+  function workspaceTimers(ctx, container, s, tasks, now, redraw, lifecycle) {
+    container.__chwDay = now.toDateString();
+    container.__chwNextDue = Infinity;
+    for (const task of tasks) {
+      const due = task.dueRaw || task.due;
+      if (task.done || !/T\d\d:\d\d/.test(due)) continue;
+      const time = Date.parse(due);
+      if (time >= now.getTime() && time < container.__chwNextDue) container.__chwNextDue = time;
+    }
+    if (container.__chwPomodoroTick) return;
+    const doc = container.ownerDocument || document;
+    const cleanup = () => {
+      window.clearInterval(container.__chwPomodoroTick);
+      window.clearInterval(container.__chwTick);
+      container.__chwPomodoroTick = container.__chwTick = null;
+    };
+    container.__chwPomodoroTick = window.setInterval(() => {
+      if (!container.isConnected) return cleanup();
+      if (!doc.hidden) syncPomodoroButtons(ctx, container);
+    }, 1000);
+    container.__chwTick = window.setInterval(() => {
+      if (!container.isConnected) return cleanup();
+      if (doc.hidden || s.saving) return;
+      const current = new Date();
+      if (current.toDateString() !== container.__chwDay ||
+          (!le(ctx.plugin.settings) && current.getTime() > container.__chwNextDue)) redraw();
+    }, 60000);
+    lifecycle.register?.(cleanup);
+  }
   function draw(ctx,cfg,container,redraw) {
     // A repository refresh must not detach an active IME composition either.
     if(container.__chwComposing)return;
+    const lifecycle=cardLifecycles.get(container.parentElement)||ctx.renderChild||ctx;
     const s=state(cfg), now=new Date(), tasks=enrich(ctx,ow(ctx,cfg)), matches=tasks.filter(t=>core.matches(t,s.filters,s.query,now));
     const oldSearch=container.querySelector('.chw-search');
     const restoreSearch=oldSearch===document.activeElement;
@@ -513,7 +623,7 @@ function carrotTaskFocus() {
     }),'chw-view');viewsButton.setAttribute('aria-label','工作视图');
     button(actions,'＋',()=>createTask(ctx,cfg,tasks,redraw),'hearth-task-add').setAttribute('aria-label','新建任务');
     button(actions,'⋯',event=>menuAt(event,menu=>{
-      menu.addItem(i=>i.setTitle('管理内容账号').onClick(()=>manageAccounts(ctx,redraw)));
+      menu.addItem(i=>i.setTitle('管理内容账号').onClick(()=>manageAccounts(ctx,cfg,redraw,commit)));
       menu.addItem(i=>i.setTitle('设置项目账号…').onClick(()=>{
         const options=projectOptions(ctx,tasks).filter(p=>p.file),modal=new CarrotHomeModal(ctx.app);modal.titleEl.setText('选择要设置账号的项目');
         const search=modal.contentEl.createEl('input',{attr:{type:'search',placeholder:'搜索项目'}}),list=modal.contentEl.createDiv('chw-options-list');
@@ -528,21 +638,8 @@ function carrotTaskFocus() {
     const related=new Set(tasks.filter(t=>core.matches(t,{...core.defaults(),accounts:s.filters.accounts})).flatMap(t=>t.workspaceProjects.map(p=>p.id)));
     const sortedProjects=[...projectOpts].sort((a,b)=>Number(related.has(b.id))-Number(related.has(a.id)));
     button(bar,`项目：${s.filters.projects.length?`${s.filters.projects.length} 个`:'全部'} ▾`,()=>pick('projects','项目',[{id:core.NONE,label:'无项目'},...sortedProjects.map(p=>({...p,label:s.filters.accounts.length&&!related.has(p.id)?`${p.label} · 非当前账号`:p.label}))]),'chw-project-filter');
-    let searchBox=container.__chwSearchBox;
-    if(!searchBox){
-      searchBox=container.__chwSearchBox=document.createElement('div');searchBox.className='chw-searchbox';
-      x.setIcon(searchBox.createSpan({cls:'chw-search-icon',attr:{'aria-hidden':'true'}}),'search');
-      const input=searchBox.createEl('input',{cls:'chw-search',attr:{type:'search',placeholder:'搜索任务或项目…','aria-label':'搜索任务或项目'}});
-      input.addEventListener('compositionstart',()=>{container.__chwComposing=true;});
-      input.addEventListener('compositionend',()=>{container.__chwComposing=false;searchBox.__query(input.value);});
-      input.addEventListener('input',event=>{if(!event.isComposing&&!container.__chwComposing)searchBox.__query(input.value);});
-      input.addEventListener('keydown',event=>{if(event.key==='Escape'&&!event.isComposing&&!container.__chwComposing&&input.value){event.preventDefault();event.stopPropagation();searchBox.__query('');}});
-      const clear=button(searchBox,'',()=>{searchBox.__query('');input.focus();},'chw-search-clear');
-      clear.setAttribute('aria-label','清除搜索');clear.title='清除搜索';x.setIcon(clear,'x');
-    }
-    searchBox.__query=value=>{s.query=value;redraw();};bar.appendChild(searchBox);
-    const search=searchBox.querySelector('input');if(search.value!==s.query)search.value=s.query;
-    searchBox.querySelector('.chw-search-clear').hidden=!s.query;
+    const searchBox=workspaceSearch(lifecycle,container,s,redraw);bar.appendChild(searchBox);
+    const search=searchBox.querySelector('input');
     const activeCount=s.filters.accounts.length+s.filters.projects.length+s.filters.statuses.length+s.filters.priorities.length+Number(!!s.filters.scheduled)+Number(!!s.filters.due)+Number(!s.filters.showCompleted)+Number(!!s.filters.focus);
     button(bar,`筛选${activeCount?` · ${activeCount}`:''}`,()=>new FilterModal(ctx,cfg,tasks,commit).open(),'chw-filter');
     decorateControl(viewsButton,'panels-top-left',{chevron:true,active:changed});
@@ -703,27 +800,23 @@ function carrotTaskFocus() {
     boardHost.addEventListener('scroll',()=>{if(container.isConnected)rememberScroll();},{capture:true,passive:true});
     enhanceTaskAccessibility(container);
     syncPomodoroButtons(ctx,container);
-    if(!container.__chwPomodoroTick){
-      // Update only controls, retaining task focus and scroll while the timer runs.
-      container.__chwPomodoroTick=window.setInterval(()=>{
-        if(!container.isConnected){clearInterval(container.__chwPomodoroTick);container.__chwPomodoroTick=null;return;}
-        syncPomodoroButtons(ctx,container);
-      },1000);
-      ctx.register?.(()=>clearInterval(container.__chwPomodoroTick));
-    }
+    workspaceTimers(ctx,container,s,tasks,now,redraw,lifecycle);
     if(container.__chwObserver)container.__chwObserver.disconnect();
     const resize=()=>{const narrow=(card||container).getBoundingClientRect().width<620;container.classList.toggle('chw-narrow',narrow);head?.classList.toggle('chw-narrow-head',narrow);};resize();
     const observer=new ResizeObserver(resize);observer.observe(card||container);container.__chwObserver=observer;
-    if(!container.__chwCleanup){container.__chwCleanup=true;ctx.register?.(()=>container.__chwObserver?.disconnect());}
-    if(!container.__chwTick){
-      container.__chwTick=window.setInterval(()=>{if(!container.isConnected){clearInterval(container.__chwTick);container.__chwTick=null;return;}if(!s.saving)redraw();},60000);
-      ctx.register?.(()=>clearInterval(container.__chwTick));
-    }
+    if(!container.__chwCleanup){container.__chwCleanup=true;lifecycle.register?.(()=>container.__chwObserver?.disconnect());}
     if(restoreSearch){search.focus({preventScroll:true});try{search.setSelectionRange(...selection);}catch{}}
     else if(savedTaskFocus)taskFocus.restore(container,savedTaskFocus,search);
     else if(focusSelector)(container.querySelector(focusSelector)||search).focus({preventScroll:true});
     container.__chwDebug={count:matches.length,total:tasks.length,filters:clone(s.filters),query:s.query,presentation:s.presentation,paths:matches.map(t=>t.file.path)};
   }
+  // Each local card refresh gets its own Obsidian Component. Release its DOM,
+  // observers and timers even when the enclosing dashboard stays open.
+  const previousCardRender=Ch.render;
+  Ch.render=function(ctx,card,body,component,...args){
+    if(component)cardLifecycles.set(body,component);
+    return previousCardRender.call(this,ctx,card,body,component,...args);
+  };
   const previousRender=Qy;
   Qy=async function(ctx,cfg,container,redraw){
     if(cfg.source!=='tasknotes'||cfg.layout!=='kanban'||!tn(ctx))return previousRender(ctx,cfg,container,redraw);
