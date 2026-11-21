@@ -197,7 +197,8 @@ var CarrotStickyUI=(()=>{
       for(const [key,b] of Object.entries(this.tabs))b.toggleClass('is-active',key===this.tab);
       if(this.owner.loadError){
         this.count.textContent='索引未能载入';this.list.empty();this.paging.empty();
-        this.list.createDiv({cls:'csn-editor-error',attr:{role:'alert'},text:'便签索引暂时无法读取，原文件已保留；这不代表便签为空。请检查 top-area.json 或恢复备份后重载插件。'+this.owner.loadError.message});
+        this.list.createDiv({cls:'csn-editor-error',attr:{role:'alert'},text:this.owner.loadError.message});
+        const retry=btn(this.list,'重新载入索引',async()=>{retry.disabled=true;try{await this.owner.reload();}finally{retry.disabled=false;}});
         return;
       }
       const paths=state[this.tab],query=this.search.value.trim().toLocaleLowerCase(),values=[];

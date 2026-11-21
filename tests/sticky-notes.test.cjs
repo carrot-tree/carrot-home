@@ -18,3 +18,90 @@ test('existing sidecars default the two area switches on and preserve explicit s
 test('folded presentation persists separately from visibility and preserves every note',async()=>{const h=storage(),s=new C.Store(h.adapter,'s');await s.update({...C.defaults(),notes:['n/a.md','n/b.md'],archived:['n/c.md'],focusPath:'t/a.md'});await s.update(x=>({...x,notesCollapsed:true}));const again=new C.Store(h.adapter,'s');await again.load();assert.equal(again.state.notesCollapsed,true);assert.equal(again.state.notesEnabled,true);assert.deepEqual(plain(again.state.notes),['n/a.md','n/b.md']);assert.equal(again.state.focusPath,'t/a.md');await again.update(x=>({...x,notesCollapsed:false}));assert.equal(again.state.notesEnabled,true);assert.equal(C.normalize({version:1,notes:[]}).notesCollapsed,false);});
 
 test('focus folding survives reload without changing visibility, note fold or selected task',async()=>{const h=storage(),s=new C.Store(h.adapter,'s');await s.update({...C.defaults(),notes:['n/a.md'],notesCollapsed:true,focusPath:'tasks/current.md'});await s.update(x=>({...x,focusCollapsed:true}));const again=new C.Store(h.adapter,'s');await again.load();assert.equal(again.state.focusCollapsed,true);assert.equal(again.state.focusEnabled,true);assert.equal(again.state.notesCollapsed,true);assert.equal(again.state.focusPath,'tasks/current.md');assert.deepEqual(plain(again.state.notes),['n/a.md']);assert.equal(C.normalize({version:1,notes:[]}).focusCollapsed,false);await again.update(x=>({...x,focusCollapsed:false}));assert.equal(again.state.focusEnabled,true);});
+
+async function desktop(t,staleMs){
+ const path=require('node:path'),fsp=fs.promises,dir=await fsp.mkdtemp(path.join(require('node:os').tmpdir(),'carrot-index-'));
+ t.after(()=>fsp.rm(dir,{recursive:true,force:true}));
+ const full=name=>path.join(dir,name),h=storage(),desktopCore=vm.runInNewContext(source+';carrotStickyNotesCore()',{require});
+ const io=desktopCore.adapterIO({...h.adapter,getFullPath:full},staleMs);
+ const write=(name,value)=>fsp.writeFile(full(name),value),read=name=>fsp.readFile(full(name),'utf8');
+ const age=async name=>{const past=new Date(Date.now()-60000);await fsp.utimes(full(name),past,past);};
+ return {io,write,read,age,full};
+}
+test('desktop replacement respects fresh locks and recovers stale locks including interrupted recovery',async t=>{
+ const h=await desktop(t);await h.write('index','before');await h.write('temp','after');await h.write('index.lock','');
+ await assert.rejects(h.io.atomicReplace('temp','index','before'),/其它窗口保存/);
+ assert.equal(await h.read('index'),'before');assert.equal(await h.read('index.lock'),'');
+ await h.age('index.lock');await h.write('index.lock.reap','');await h.age('index.lock.reap');
+ await h.io.atomicReplace('temp','index','before');assert.equal(await h.read('index'),'after');
+ for(const name of ['index.lock','index.lock.reap','index.lock.reap.reap'])assert.equal(fs.existsSync(h.full(name)),false);
+});
+test('competing stale lock reclaimers accept just one writer against the expected bytes',async t=>{
+ const h=await desktop(t);await h.write('index','before');await h.write('index.lock','');await h.age('index.lock');
+ const temps=Array.from({length:8},(_,i)=>'temp'+i);await Promise.all(temps.map(name=>h.write(name,name)));
+ const results=await Promise.allSettled(temps.map(name=>h.io.atomicReplace(name,'index','before')));
+ const accepted=temps.filter((_,i)=>results[i].status==='fulfilled');assert.equal(accepted.length,1);
+ assert.equal(await h.read('index'),accepted[0]);assert.equal(fs.existsSync(h.full('index.lock')),false);
+});
+test('an aged lock owned by a live local writer still excludes replacements',async t=>{
+ const h=await desktop(t,1);await h.write('index','before');await h.write('temp','after');
+ await h.write('index.lock',JSON.stringify({host:require('node:os').hostname(),pid:process.pid}));
+ const past=new Date(Date.now()-100);await fs.promises.utimes(h.full('index.lock'),past,past);
+ await assert.rejects(h.io.atomicReplace('temp','index','before'),/其它窗口保存/);
+ assert.equal(await h.read('index'),'before');assert.equal(fs.existsSync(h.full('index.lock')),true);
+});
+test('non-contention filesystem errors retain their original code and message',async t=>{
+ const h=await desktop(t);
+ await assert.rejects(h.io.atomicReplace('temp','absent/index',null),{code:'ENOENT'});
+ for(const code of ['EACCES','EROFS']){
+  const err=Object.assign(Error(code+' opening lock'),{code});
+  const core=vm.runInNewContext(source+';carrotStickyNotesCore()',{require:()=>({promises:{open:async()=>{throw err;}}})});
+  const io=core.adapterIO({...storage().adapter,getFullPath:p=>p});
+  await assert.rejects(io.atomicReplace('temp','index',null),e=>e===err);
+ }
+});
+function mobile(){
+ const raw=JSON.stringify({...C.defaults(),custom:'keep'}),h=storage({index:raw}),s=new C.Store(h.adapter,'index');
+ const rename=h.adapter.rename;
+ h.adapter.rename=async(from,to)=>{if(h.files.has(to))throw new Error('Destination file already exists');return rename(from,to);};
+ return {raw,h,s};
+}
+test('mobile rename collisions verify and replace an existing index without unlinking it',async()=>{
+ const {h,s}=mobile(),removed=[],remove=h.adapter.remove;
+ h.adapter.remove=async path=>{removed.push(path);return remove(path);};
+ await s.load();await s.update(state=>({...state,notes:['a.md']}));
+ assert.equal(s.error,null);assert.deepEqual(plain(s.state.notes),['a.md']);assert.equal(s.state.custom,'keep');
+ assert.equal(s.disk,h.files.get('index'));assert.deepEqual([...h.files.keys()],['index']);assert.ok(!removed.includes('index'));
+});
+test('mobile replacement compares again after rename fails and preserves a sync winner',async()=>{
+ const {raw,h,s}=mobile();await s.load();
+ const external=JSON.stringify({...C.defaults(),notes:['other.md']});
+ h.adapter.rename=async()=>{h.files.set('index',external);throw Object.assign(Error('collision'),{code:'EEXIST'});};
+ await assert.rejects(s.update(x=>({...x,enabled:false})),/其它窗口/);
+ assert.equal(s.disk,raw);assert.equal(h.files.get('index'),external);assert.deepEqual([...h.files.keys()],['index']);assert.ok(s.error);
+});
+test('failed mobile readback preserves verified recovery copies and the last accepted state',async()=>{
+ const {raw,h,s}=mobile(),write=h.adapter.write;await s.load();
+ h.adapter.write=async(p,value)=>write(p,p==='index'?'partial':value);
+ await assert.rejects(s.update(x=>({...x,notes:['pending.md']})),/读回校验失败/);
+ const original=[...h.files.keys()].find(p=>p.endsWith('.original')),temp=original.slice(0,-'.original'.length);
+ assert.equal(h.files.get(original),raw);assert.deepEqual(JSON.parse(h.files.get(temp)).notes,['pending.md']);
+ assert.equal(s.disk,raw);assert.deepEqual(plain(s.state.notes),[]);await assert.rejects(s.reload());assert.ok(s.error);
+});
+test('reload validates external data before releasing conflicts or changing accepted state',async()=>{
+ const {raw,h,s}=mobile();await s.load();const initial=s.state;
+ h.files.set('index','bad');await assert.rejects(s.update(x=>({...x,enabled:false})),/其它窗口/);
+ await assert.rejects(s.reload());assert.equal(s.state,initial);assert.equal(s.disk,raw);assert.equal(h.files.get('index'),'bad');
+ h.files.delete('index');await assert.rejects(s.reload(),/找不到/);assert.equal(s.state,initial);
+ const other=JSON.stringify({...C.defaults(),notes:['other.md'],custom:'external'});h.files.set('index',other);
+ await s.reload();assert.equal(s.error,null);assert.equal(s.disk,other);
+ await s.update(x=>({...x,focusCollapsed:true}));assert.equal(s.state.custom,'external');assert.deepEqual(plain(s.state.notes),['other.md']);
+});
+test('reload shares the write queue and a following change sees the verified state',async()=>{
+ const h=storage(),s=new C.Store(h.adapter,'index'),rename=h.adapter.rename;
+ let resume,started;const gate=new Promise(r=>resume=r),begin=new Promise(r=>started=r);
+ h.adapter.rename=async(...args)=>{started();await gate;return rename(...args);};
+ const first=s.update(x=>({...x,notes:['first.md']}));await begin;
+ const reload=s.reload(),second=s.update(x=>({...x,notes:[...x.notes,'second.md']}));
+ resume();await Promise.all([first,reload,second]);assert.deepEqual(JSON.parse(h.files.get('index')).notes,['first.md','second.md']);
+});

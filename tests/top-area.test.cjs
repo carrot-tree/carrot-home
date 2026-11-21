@@ -190,3 +190,141 @@ test('shrinking focus dial keeps its visible center beside the title and search'
  const bounded=core.slots({left:0,right:1500,top:40,bottom:260,sideCenterY:300,obstacles:[{left:500,right:1000,top:70,bottom:250,kind:'center'}]}).find(s=>s.kind==='focus');
  assert.ok(bounded.top+bounded.height<=260,'clamp to the existing header gap');
 });
+
+function mountedHome(){
+ const events=()=>({handlers:new Map(),addEventListener(k,fn){if(!this.handlers.has(k))this.handlers.set(k,new Set());this.handlers.get(k).add(fn);},
+  removeEventListener(k,fn){this.handlers.get(k)?.delete(fn);},emit(k,event={}){for(const fn of this.handlers.get(k)||[])fn(event);}});
+ const frames=new Map(),timers=new Map(),resizes=[],intersections=[],counts={rect:0,icons:0,selected:0,reads:0},opened=[],notices=[];
+ let id=0;
+ const win={...events(),requestAnimationFrame:fn=>(frames.set(++id,fn),id),cancelAnimationFrame:i=>frames.delete(i),
+  setInterval:fn=>(timers.set(++id,fn),id),clearInterval:i=>timers.delete(i),
+  ResizeObserver:class{constructor(fn){resizes.push(fn);}observe(){}disconnect(){}},
+  IntersectionObserver:class{constructor(fn){intersections.push(fn);}observe(){}disconnect(){}}};
+ const doc={...events(),defaultView:win,hidden:false,createElementNS(ns,tag){const el=new Element(tag);el.namespaceURI=ns;return el;}};
+ class Element{
+  constructor(tag,options={}){Object.assign(this,events());this.tag=tag;this.ownerDocument=doc;this.children=[];this.dataset={};this.attrs={...options.attr};
+   this.classes=new Set((options.cls||'').split(' '));this.classList=this.classes;this.classList.contains=name=>this.classes.has(name);
+   this.textContent=options.text||'';this.value='';this.isConnected=true;this.style={setProperty(k,v){this[k]=v;},removeProperty(k){delete this[k];}};}
+  appendChild(el){this.children.push(el);el.parent=this;return el;}
+  createEl(tag,options){return this.appendChild(new Element(tag,options));}createDiv(o){return this.createEl('div',o);}createSpan(o){return this.createEl('span',o);}
+  setAttribute(k,v){this.attrs[k]=String(v);}getAttribute(k){return this.attrs[k]??null;}addClass(k){this.classes.add(k);}
+  removeClass(k){this.classes.delete(k);}toggleClass(k,b){if(b)this.addClass(k);else this.removeClass(k);}
+  empty(){this.children=[];}remove(){this.isConnected=false;}focus(){}setText(text){this.textContent=text;}
+  matches(selector){return selector.split(',').some(s=>{s=s.replace(':scope > ','');return s.startsWith('.')?this.classes.has(s.slice(1)):s.startsWith('[')?Object.hasOwn(this.attrs,s.slice(1,-1)):this.tag===s;});}
+  querySelectorAll(s){return this.children.flatMap(c=>[...(c.matches(s)?[c]:[]),...c.querySelectorAll(s)]);}querySelector(s){return this.querySelectorAll(s)[0]||null;}
+  getBoundingClientRect(){counts.rect++;return this.box||{left:0,top:0,right:0,bottom:0,height:0,width:0};}
+  click(){if(!this.disabled)this.emit('click',{stopPropagation(){}});}
+ }
+ class File{constructor(path){this.path=path;this.basename=path;this.stat={mtime:1,size:1};}}
+ class Modal{constructor(app){this.app=app;this.contentEl=new Element('div');this.titleEl=new Element('div');this.modalEl=new Element('div');}}
+ const state={timeRemaining:60,isRunning:false},service={getState:()=>state,getLastSelectedTaskPath:async()=>{counts.selected++;return '';}};
+ const tn={pomodoroService:service,settings:{}},disk=new Map(),vaultEvents=events(),workspaceEvents=events(),settingTabs=[];
+ const noteFiles=new Map(['a.md','b.md','c.md','d.md','legacy.md'].map(p=>[p,new File(p)]));
+ const plugin={settings:{lowPower:false,openIn:'split'},manifest:{dir:'plugin'},registerEvent(){},app:{
+  plugins:{plugins:{tasknotes:tn}},setting:{open(){},openTabById:id=>settingTabs.push(id)},
+  vault:{on:(...args)=>vaultEvents.addEventListener(...args),getAbstractFileByPath:p=>noteFiles.get(p),
+   cachedRead:async file=>{counts.reads++;return '# '+file.path;},adapter:{exists:async p=>disk.has(p),read:async p=>disk.get(p),write:async(p,v)=>disk.set(p,v),
+    rename:async(a,b)=>{disk.set(b,disk.get(a));disk.delete(a);},remove:async p=>disk.delete(p)}},
+  workspace:{on:(k,fn)=>{workspaceEvents.addEventListener(k,fn);return {k,fn};},offref:ref=>workspaceEvents.removeEventListener(ref.k,ref.fn),
+   getLeaf:pane=>({openFile:f=>opened.push({pane,path:f.path})})}}};
+ const O={Platform:{isPhone:false},TFile:File,FuzzySuggestModal:class{},Notice:class{constructor(value){notices.push(value);}},
+  setIcon(el,name){counts.icons++;el.draws=(el.draws||0)+1;el.icon=name;}};
+ const sandbox={require:()=>O,CarrotHomeModal:Modal,document:doc,window:win,U:(ctx,file,kind)=>opened.push({ctx,path:file.path,kind})};
+ const read=name=>fs.readFileSync(require('node:path').join(__dirname,'../src/'+name+'.js'),'utf8');
+ vm.runInNewContext([sticky,read('sticky-notes-ui'),read('focus-moment'),source.slice(0,source.indexOf('  const previousRender=En.prototype.render;')),
+  'globalThis.Controller=TopArea;})();'].join('\n'),sandbox);
+ const owner=new sandbox.Controller(plugin);owner.start();
+ const mount=()=>{
+  const content=new Element('div'),scroll=content.createDiv({cls:'hearth-scroll'}),inner=scroll.createDiv({cls:'hearth-inner'}),header=inner.createDiv({cls:'hearth-header'});
+  const box=(left,top,right,bottom)=>({left,top,right,bottom,width:right-left,height:bottom-top});
+  inner.box=box(0,0,1600,600);header.box=box(0,0,1600,300);header.createDiv({cls:'hearth-title'}).box=box(480,50,1120,200);
+  inner.createDiv({cls:'hearth-dashboard'}).box=box(0,310,1600,600);owner.mount({contentEl:content});return content;
+ };
+ const frame=()=>{const pending=[...frames.values()];frames.clear();for(const fn of pending)fn();};
+ const interval=()=>{for(const fn of timers.values())fn();};
+ return {owner,plugin,state,tn,service,mount,doc,win,counts,frames,timers,frame,interval,resizes,intersections,vaultEvents,workspaceEvents,opened,settingTabs,sandbox,disk,notices};
+}
+const settled=()=>new Promise(resolve=>setImmediate(resolve));
+
+test('resize and workspace notifications share one frame and timer ticks never measure layout',async()=>{
+ const h=mountedHome(),view=h.mount();await settled();assert.equal(h.frames.size,1);h.frame();
+ const baseline=h.counts.rect;assert.ok(baseline>0);assert.equal(h.counts.selected,1);
+ const fold=view.querySelector('.cta-fold-focus'),glyph=fold.querySelector('.cta-rope-reel');
+ assert.equal(glyph.draws,1);assert.equal(fold.tag,'button');assert.equal(fold.attrs.type,'button');assert.equal(fold.handlers.has('keydown'),false);
+ assert.ok(view.querySelectorAll('svg,path,circle').every(el=>el.namespaceURI==='http://www.w3.org/2000/svg'));
+ const main=view.querySelector('.cfm-main'),initialIcon=main.children[0];
+ h.state.currentSession={type:'work',plannedDuration:1};h.state.isRunning=true;
+ h.interval();const runningIcon=main.children[0];assert.notEqual(runningIcon,initialIcon);
+ for(let i=0;i<5;i++){h.state.timeRemaining--;h.interval();}
+ assert.equal(view.querySelector('.cta-time').textContent,'00:55');assert.equal(main.children[0],runningIcon);assert.equal(glyph.draws,1);
+ assert.equal(h.counts.selected,1);assert.equal(h.frames.size,0);assert.equal(h.counts.rect,baseline);
+ h.resizes[0]();h.win.emit('resize');h.workspaceEvents.emit('layout-change');assert.equal(h.frames.size,1);
+ h.frame();assert.ok(h.counts.rect>baseline);fold.click();await settled();assert.equal(glyph.draws,2);assert.equal(fold.attrs['aria-expanded'],'false');
+ assert.equal(h.frames.size,1);h.owner.destroy();assert.equal(h.frames.size,0);assert.equal(h.timers.size,0);
+});
+
+test('hidden views skip timer work and low power wakes for active and settling sessions',async()=>{
+ const h=mountedHome(),view=h.mount();await settled();h.frame();const time=view.querySelector('.cta-time');
+ h.plugin.settings.lowPower=true;h.state.timeRemaining=80;h.interval();assert.equal(time.textContent,'01:00');
+ h.state.currentSession={type:'short-break',plannedDuration:5};h.state.isRunning=true;
+ h.doc.hidden=true;h.interval();assert.equal(time.textContent,'01:00');h.doc.hidden=false;
+ h.intersections[0]([{isIntersecting:false}]);h.interval();assert.equal(time.textContent,'01:00');
+ h.intersections[0]([{isIntersecting:true}]);assert.equal(time.textContent,'01:20');
+ const task=view.querySelector('.cta-task');assert.equal(task.disabled,true);assert.equal(task.attrs['aria-label'],'短休息中');
+ h.state.timeRemaining=79;h.interval();assert.equal(time.textContent,'01:19');
+ h.state.isRunning=false;h.interval();assert.equal(task.attrs['aria-label'],'短休息已暂停');
+ h.state.currentSession=null;h.state.timeRemaining=120;h.interval();await settled();
+ assert.equal(time.textContent,'02:00');assert.equal(task.disabled,false);assert.equal(h.counts.selected,2);
+ h.state.timeRemaining=180;h.interval();assert.equal(time.textContent,'02:00');h.plugin.settings.lowPower=false;
+ h.interval();assert.equal(time.textContent,'03:00');assert.equal(h.counts.selected,2);
+ h.doc.emit('visibilitychange');h.win.emit('focus');await settled();assert.equal(h.counts.selected,4);
+ h.owner.destroy();
+});
+
+test('an idle timer change preserves an in-flight selection lookup and a missing dependency opens settings',async()=>{
+ const h=mountedHome();let complete;h.owner.store.state.focusPath='legacy.md';
+ h.service.getLastSelectedTaskPath=()=>new Promise(r=>{h.counts.selected++;complete=r;});
+ const view=h.mount();await settled();h.frame();h.state.timeRemaining=58;h.interval();assert.equal(h.counts.selected,1);
+ complete('');await settled();const task=view.querySelector('.cta-task');assert.equal(task.textContent,'legacy.md');
+ delete h.plugin.app.plugins.plugins.tasknotes;h.interval();task.click();await settled();
+ assert.deepEqual(h.settingTabs,['community-plugins']);assert.deepEqual(h.opened,[]);h.owner.destroy();
+});
+
+test('independent panels turn their own pages and index errors reach recovery before any note reads',async()=>{
+ const h=mountedHome();h.owner.state.notes=['a.md','b.md','c.md','d.md'];const a=h.mount(),b=h.mount();await settled();h.frame();
+ const page=v=>v.querySelector('.csn-top-page').textContent,next=v=>v.querySelectorAll('button').find(el=>el.attrs['aria-label']==='下一组便签');
+ next(a).click();await settled();assert.equal(page(a),'2/2');assert.equal(page(b),'1/2');assert.equal(h.owner.offset,2);
+ h.owner.refresh();await settled();assert.equal(page(a),'2/2');assert.equal(page(b),'1/2');
+ h.owner.store.error=Error('external edit');let attempts=0;const read=h.owner.readNote.bind(h.owner);h.owner.readNote=(...args)=>{attempts++;return read(...args);};
+ h.owner.refresh();await settled();assert.equal(attempts,0);assert.equal(a.querySelectorAll('.cta-note').length,0);assert.equal(a.querySelector('.cta-store-error').textContent,'external edit');
+ h.disk.set(h.owner.path,JSON.stringify({...h.owner.state,notes:['d.md']}));await h.owner.reload();await settled();
+ assert.equal(page(a),'1/1');assert.equal(page(b),'1/1');assert.equal(a.querySelector('.cta-note-title').textContent,'d.md');
+ assert.equal(a.querySelectorAll('button').find(el=>el.attrs['aria-label']==='贴一张').disabled,false);h.owner.destroy();
+});
+
+test('modify and delete events invalidate only the affected note or focus task',()=>{
+ const h=mountedHome(),calls=[];h.owner.state.notes=['note.md'];h.owner.state.archived=['archived.md'];h.owner.state.focusPath='selected.md';
+ h.state.currentSession={type:'work',taskPath:'session.md'};h.owner.focus.invalidate=p=>calls.push(p);
+ h.owner.focus.refresh=()=>calls.push('focus');h.owner.refresh=()=>calls.push('notes');
+ for(const kind of ['modify','delete']){
+  h.owner.cache.set('keep.md',true);h.owner.cache.set('ordinary.md',true);
+  h.vaultEvents.emit(kind,{path:'ordinary.md'});assert.equal(h.owner.cache.has('keep.md'),true);assert.equal(h.owner.cache.has('ordinary.md'),false);
+  assert.deepEqual(calls,[]);for(const p of ['note.md','archived.md','selected.md','session.md'])h.vaultEvents.emit(kind,{path:p});
+  assert.deepEqual(calls,['notes','notes','selected.md','focus','session.md','focus']);calls.length=0;
+ }
+});
+test('note and focus links use the configured card opener and fall back when unavailable',async()=>{
+ const h=mountedHome();await h.owner.openFile('legacy.md');
+ assert.equal(h.opened[0].ctx.app,h.plugin.app);assert.equal(h.opened[0].ctx.settings,h.plugin.settings);assert.equal(h.opened[0].kind,'card');
+ delete h.sandbox.U;await h.owner.openFile('legacy.md');assert.deepEqual(h.opened[1],{pane:false,path:'legacy.md'});
+ await assert.rejects(h.owner.openFile('missing.md'),/移动或删除/);
+});
+
+test('the manager can recover a conflict in place and reports a damaged file without reading stale cards',async()=>{
+ const h=mountedHome(),manager=new h.sandbox.CarrotStickyUI.Manager(h.owner);h.owner.store.error=Error('同步冲突');h.owner.state.notes=['a.md'];
+ manager.onOpen();const retry=()=>manager.list.querySelectorAll('button').find(b=>b.textContent==='重新载入索引');
+ assert.ok(retry());assert.equal(h.counts.reads,0);
+ h.disk.set(h.owner.path,'broken');retry().click();await settled();assert.ok(retry());assert.ok(h.owner.loadError);assert.equal(h.disk.get(h.owner.path),'broken');
+ h.disk.set(h.owner.path,JSON.stringify({...h.owner.state,notes:['b.md']}));retry().click();await settled();
+ assert.equal(h.owner.loadError,null);assert.equal(retry(),undefined);assert.equal(manager.list.querySelector('.csn-row-title').textContent,'b.md');manager.onClose();
+});

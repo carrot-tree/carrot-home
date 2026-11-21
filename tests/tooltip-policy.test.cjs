@@ -9,7 +9,7 @@ function documentFixture(){
  const bind=vm.runInNewContext(source.split(';(()=>{')[0]+';carrotHomeTooltipDocument');
  const root=()=>({ownerDocument:doc});
  const over=(scope,mode)=>events.get('pointerover')?.({target:{closest:selector=>selector==='.carrot-selective-tooltips'?scope:mode?{getAttribute:()=>mode}:null}});
- return{classes,events,root,bind,over};
+ return{classes,events,root,bind,over,doc};
 }
 test('regions, card contents and ordinary text do not explain themselves on hover',()=>{
  for(const label of ['顶部留白工具','随手晾晾','专注一刻','任务状态看板','星期四, 2026年11月12日'])
@@ -52,4 +52,44 @@ test('closing one owned surface preserves the other surface and the last close r
  first.release();assert.equal(f.events.has('pointerover'),true);
  f.over(b,'silent');assert.equal(f.classes.has('carrot-home-tooltip-quiet'),true);
  second.release();assert.equal(f.events.has('pointerover'),false);assert.equal(f.classes.has('carrot-home-tooltip-quiet'),false);
+});
+
+function tooltipSurface(){
+ const events=new Map(),sizeReads=new Map(),doc=documentFixture().doc;
+ let observe;
+ class Element{
+  constructor(tag,cls='',attrs={}){this.tag=tag;this.cls=cls;this.attrs=new Map(Object.entries(attrs));this.children=[];this.textContent='';this.width=60;this.overflow=60;this.classList={add(){},remove(){}};this.ownerDocument=doc;}
+  add(tag,cls,attrs){const el=new Element(tag,cls,attrs);el.parentElement=this;this.children.push(el);return el;}
+  get innerText(){throw Error('innerText causes a layout read');}
+  get clientWidth(){sizeReads.set(this,(sizeReads.get(this)||0)+1);return this.width;}
+  get scrollWidth(){return this.overflow;}get clientHeight(){return 12;}get scrollHeight(){return 12;}
+  setAttribute(k,v){this.attrs.set(k,v);}getAttribute(k){return this.attrs.get(k)??null;}removeAttribute(k){this.attrs.delete(k);}
+  matches(selector){return selector.split(',').some(s=>s[0]==='['?this.attrs.has(s.slice(1,-1)):s[0]==='.'?this.cls===s.slice(1):this.tag===s);}
+  querySelectorAll(s){return this.children.flatMap(c=>[...(c.matches(s)?[c]:[]),...c.querySelectorAll(s)]);}
+  querySelector(s){return this.querySelectorAll(s)[0]||null;}
+  contains(el){while(el){if(el===this)return true;el=el.parentElement;}return false;}
+  addEventListener(k,fn){events.set(k,fn);}removeEventListener(k){events.delete(k);}
+ }
+ const root=new Element('div');
+ const bind=vm.runInNewContext(source.split(';(()=>{')[0]+';carrotHomeBindTooltips',{MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}}});
+ return {root,start:()=>bind(root),over:target=>events.get('pointerover')({target}),change:target=>observe([{type:'attributes',target}]),sizeReads};
+}
+test('a clipped title recovers the original explanation and later authored titles take precedence',()=>{
+ const h=tooltipSurface(),p=h.root.add('div','hearth-task-text',{title:'完整说明（附截止时间）'});p.textContent='短标题';
+ const stop=h.start();assert.equal(p.getAttribute('title'),null);assert.equal(p.getAttribute('data-carrot-orig-title'),'完整说明（附截止时间）');
+ p.overflow=140;h.over(p);assert.equal(p.getAttribute('title'),'完整说明（附截止时间）');
+ p.overflow=60;h.over(p);p.setAttribute('title','新说明');h.change(p);p.overflow=140;h.over(p);
+ assert.equal(p.getAttribute('title'),'新说明');p.overflow=60;h.over(p);stop();assert.equal(p.getAttribute('title'),'新说明');
+});
+test('disabled controls restore their reason without measuring ordinary hover ancestors',()=>{
+ const h=tooltipSurface(),container=h.root.add('div'),b=container.add('button','',{'aria-label':'开始',title:'请先选择任务'}),text=b.add('span');
+ b.textContent='开始';const stop=h.start();
+ const get=container.getAttribute;container.getAttribute=()=>{throw Error('plain hover ancestor was processed');};
+ h.over(text);b.disabled=true;h.change(b);assert.equal(b.getAttribute('title'),'请先选择任务');assert.equal(h.sizeReads.size,0);
+ b.disabled=false;h.change(b);assert.equal(b.getAttribute('title'),null);container.getAttribute=get;stop();assert.equal(b.getAttribute('title'),'请先选择任务');
+});
+test('generated clipping text follows reused labels and is removed when space returns',()=>{
+ const h=tooltipSurface(),p=h.root.add('span','hearth-task-text');p.textContent='第一项';p.overflow=120;const stop=h.start();
+ assert.equal(p.getAttribute('title'),'第一项');p.textContent='另一项';h.over(p);assert.equal(p.getAttribute('title'),'另一项');
+ p.overflow=60;h.over(p);assert.equal(p.getAttribute('title'),null);assert.equal(p.getAttribute('data-carrot-orig-title'),null);stop();
 });

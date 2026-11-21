@@ -31,35 +31,124 @@ function carrotStickyNotesCore() {
   function move(list,path,target,after=false){if(path===target||!list.includes(path)||!list.includes(target))return [...list];const next=list.filter(p=>p!==path),i=next.indexOf(target);next.splice(i+(after?1:0),0,path);return next;}
   function shift(list,path,delta){const i=list.indexOf(path),n=i+delta;if(i<0||n<0||n>=list.length)return [...list];return move(list,path,list[n],delta>0);}
   function rename(state,oldPath,newPath){const replace=p=>p===oldPath?newPath:p.startsWith(oldPath+'/')?newPath+p.slice(oldPath.length):p;return {...state,notes:state.notes.map(replace),archived:state.archived.map(replace),focusPath:replace(state.focusPath),drafts:Object.fromEntries(Object.entries(state.drafts).map(([p,d])=>[p==='new'?p:replace(p),d]))};}
+  const conflict=()=>Object.assign(new Error('便签索引已在其它窗口变更，请重新载入索引后重试；没有覆盖新数据'),{code:'CARROT_INDEX_CONFLICT'});
+  const existsError=e=>e.code==='EEXIST'||/\b(?:already exists|(?:file|destination|target|path) exists)\b|已存在/i.test(e.message);
   class Store {
     constructor(adapter,path){this.adapter=adapter;this.path=path;this.state=defaults();this.disk=null;this.error=null;this.queue=Promise.resolve();}
-    async load(){
-      try{if(!await this.adapter.exists(this.path))return this.state;
-        const raw=await this.adapter.read(this.path),input=JSON.parse(raw),next=normalize(input);this.disk=raw;
-        if(input.version===1){const backup=this.path+'.v1-backup-'+Date.now()+'.json';await this.adapter.write(backup,raw);if(await this.adapter.read(backup)!==raw)throw new Error('旧便签备份验证失败；没有执行迁移');await this.commit(next);this.migrationBackup=backup;}else this.state=next;
-      }catch(error){this.error=error;}
+    async readIndex(required){
+      if(!await this.adapter.exists(this.path)){
+        if(required)throw new Error('找不到便签索引，请检查 top-area.json 或恢复备份');
+        return this.state;
+      }
+      const raw=await this.adapter.read(this.path),input=JSON.parse(raw),next=normalize(input);
+      if(input.version===1){
+        const backup=this.path+'.v1-backup-'+Date.now()+'.json';await this.adapter.write(backup,raw);
+        if(await this.adapter.read(backup)!==raw)throw new Error('旧便签备份验证失败；没有执行迁移');
+        await this.commit(next,raw);this.migrationBackup=backup;
+      }else{this.state=next;this.disk=raw;}
+      this.error=null;
       return this.state;
     }
-    async commit(next){
+    async load(){try{return await this.readIndex(false);}catch(error){this.error=error;return this.state;}}
+    reload(){
+      const work=this.queue.catch(()=>{}).then(()=>this.readIndex(true)).catch(error=>{this.error=error;throw error;});
+      this.queue=work;return work;
+    }
+    async checkDisk(expected){
       const current=await this.adapter.exists(this.path)?await this.adapter.read(this.path):null;
-      if(current!==this.disk)throw new Error('便签索引已在其它窗口变更，请重载后重试；没有覆盖新数据');
-      const text=JSON.stringify(normalize(next),null,2),temp=this.path+'.tmp-'+Date.now()+'-'+Math.random().toString(36).slice(2);
-      try{await this.adapter.write(temp,text);if(await this.adapter.read(temp)!==text)throw new Error('便签写入校验失败');if(this.adapter.atomicReplace)await this.adapter.atomicReplace(temp,this.path,this.disk);else await this.adapter.rename(temp,this.path);}
-      catch(error){try{if(await this.adapter.exists(temp))await this.adapter.remove(temp);}catch{}throw error;}
-      this.disk=text;this.state=normalize(next);return this.state;
+      if(current!==expected)throw conflict();
+    }
+    async commit(next,expected=this.disk){
+      const state=normalize(next),text=JSON.stringify(state,null,2),temp=this.path+'.tmp-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+      const backup=temp+'.original';
+      let keepCopies=false,hasBackup=false,hasTemp=false;
+      try{
+        await this.checkDisk(expected);
+        hasTemp=true;await this.adapter.write(temp,text);
+        if(await this.adapter.read(temp)!==text)throw new Error('便签写入校验失败');
+        if(this.adapter.atomicReplace){await this.adapter.atomicReplace(temp,this.path,expected);hasTemp=false;}
+        else{
+          await this.checkDisk(expected);
+          try{await this.adapter.rename(temp,this.path);hasTemp=false;}
+          catch(error){
+            if(!existsError(error))throw error;
+            await this.checkDisk(expected);
+            if(expected===null)throw error;
+            // Some mobile adapters can only rename into an empty destination.
+            // Keep both verified versions until the in-place write reads back.
+            hasBackup=true;await this.adapter.write(backup,expected);
+            if(await this.adapter.read(backup)!==expected)throw new Error('便签原索引备份校验失败');
+            await this.checkDisk(expected);keepCopies=true;
+            await this.adapter.write(this.path,text);
+            if(await this.adapter.read(this.path)!==text)throw new Error('便签索引读回校验失败');
+            keepCopies=false;
+          }
+        }
+      }catch(error){
+        if(keepCopies)this.error=new Error(error.message+'；原索引备份在 '+backup+'，待保存索引在 '+temp);
+        if(error.code==='CARROT_INDEX_CONFLICT')this.error=error;
+        throw keepCopies?this.error:error;
+      }finally{
+        if(!keepCopies){
+          for(const path of [hasTemp&&temp,hasBackup&&backup])if(path)try{if(await this.adapter.exists(path))await this.adapter.remove(path);}catch{}
+        }
+      }
+      this.disk=text;this.state=state;return state;
     }
     update(change){const work=this.queue.catch(()=>{}).then(()=>{if(this.error)throw new Error('随手晾晾的数据未能读取，请检查 top-area.json；没有清空或覆盖原文件');return this.commit(typeof change==='function'?change(this.state):change);});this.queue=work;return work;}
   }
-  function adapterIO(adapter){
+  function adapterIO(adapter,staleMs=15000){
     const io=Object.fromEntries(['exists','read','write','remove','rename'].map(k=>[k,adapter[k].bind(adapter)]));
     if(typeof adapter.getFullPath==='function')io.atomicReplace=async(from,to,expected)=>{
-      const fs=require('fs').promises,lockPath=adapter.getFullPath(to+'.lock');let lock;
-      try{lock=await fs.open(lockPath,'wx');}catch{throw new Error('便签正由其它窗口保存，请稍后重试；原文件未覆盖');}
+      const fs=require('fs').promises,lockPath=adapter.getFullPath(to+'.lock');
+      const busy=()=>new Error('便签正由其它窗口保存，请稍后重试；原文件未覆盖');
+      const stat=async path=>{try{return await fs.lstat(path);}catch(e){if(e.code!=='ENOENT')throw e;return null;}};
+      const unlink=async path=>{try{await fs.unlink(path);}catch(e){if(e.code!=='ENOENT')throw e;}};
+      const same=(a,b)=>a&&b&&a.dev===b.dev&&a.ino===b.ino;
+      const release=async(path,handle)=>{
+        try{if(same(await handle.stat(),await stat(path)))await unlink(path);}finally{await handle.close();}
+      };
+      const create=async path=>{
+        const handle=await fs.open(path,'wx');
+        try{await handle.writeFile(JSON.stringify({host:require('os').hostname(),pid:require('process').pid}));return handle;}
+        catch(e){await release(path,handle);throw e;}
+      };
+      const retry=async path=>{
+        try{return await create(path);}catch(e){if(e.code==='EEXIST')throw busy();throw e;}
+      };
+      const liveOwner=async(path,info)=>{
+        if(!info.size||info.size>1024)return false;
+        let raw;try{raw=await fs.readFile(path,'utf8');}catch(e){if(e.code==='ENOENT')return false;throw e;}
+        let owner;try{owner=JSON.parse(raw);}catch{return false;}
+        if(owner?.host!==require('os').hostname()||!Number.isInteger(owner.pid)||owner.pid<=0||owner.pid>2147483647)return false;
+        const proc=require('process');
+        if(owner.pid===proc.pid&&info.mtimeMs<Date.now()-proc.uptime()*1000-1000)return false;
+        try{proc.kill(owner.pid,0);return true;}catch(e){if(e.code==='ESRCH')return false;if(e.code==='EPERM')return true;throw e;}
+      };
+      const acquire=async path=>{
+        try{return await create(path);}catch(e){if(e.code!=='EEXIST')throw e;}
+        const old=await stat(path);
+        if(!old)return retry(path);
+        if(!old.isFile()||Date.now()-old.mtimeMs<=staleMs||await liveOwner(path,old))throw busy();
+        // Serialize competing reclaimers. A crash during recovery leaves a
+        // guard that can itself be reclaimed by the same age/identity checks.
+        const guardPath=path+'.reap',guard=await acquire(guardPath);
+        try{
+          const current=await stat(path);
+          if(current){
+            if(!same(old,current)||old.mtimeMs!==current.mtimeMs)throw busy();
+            await unlink(path);
+          }
+          return await retry(path);
+        }finally{await release(guardPath,guard);}
+      };
+      const lock=await acquire(lockPath);
       try{
         let disk=null;try{disk=await fs.readFile(adapter.getFullPath(to),'utf8');}catch(e){if(e.code!=='ENOENT')throw e;}
-        if(disk!==expected)throw new Error('便签索引已在其它窗口变更，请重载后重试；没有覆盖新数据');
+        if(disk!==expected)throw conflict();
+        if(!same(await lock.stat(),await stat(lockPath)))throw busy();
         await fs.rename(adapter.getFullPath(from),adapter.getFullPath(to));
-      }finally{await lock.close();await fs.unlink(lockPath);}
+      }finally{await release(lockPath,lock);}
     };
     return io;
   }

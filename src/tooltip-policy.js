@@ -48,13 +48,17 @@ function carrotHomeBindTooltips(root) {
   const compounds='.hearth-card,.hearth-kanban-card,.hearth-task-row,.hearth-sched-cell,[role="region"],[role="list"],[role="group"]';
   const titles='.hearth-kanban-card-text,.hearth-task-text,.hearth-card-title,.hearth-title-text,.hearth-recent-title,.hearth-bookmark-title,.hearth-favorite-title,.cta-note-title,.cta-task';
   const helpful='.cta-fold-notes,.cta-fold-focus,.csn-note-drag,.hearth-dash-btn,.hearth-task-add,.hearth-task-date-btn,.hearth-task-priority.is-dot-only,.hearth-task-status.is-dot,[data-carrot-tooltip-help]';
+  const original='data-carrot-orig-title',candidates='[title],[aria-label],['+original+'],'+titles,generated=new WeakMap();
   root.classList.add('carrot-selective-tooltips');
   const guard=carrotHomeTooltipDocument(root);
   function apply(el) {
     if(!el?.matches||!root.contains(el))return;
-    const title=el.getAttribute('title')||'',label=el.getAttribute('aria-label')||'',text=el.innerText||'';
-    if(!title&&!label&&!el.matches(titles))return;
-    const clipped=el.matches(titles)&&el.clientWidth>0&&(el.scrollWidth>el.clientWidth+1||el.clientHeight>0&&el.scrollHeight>el.clientHeight+1);
+    const native=el.getAttribute('title'),saved=el.getAttribute(original),derived=native!=null&&generated.get(el)===native;
+    const title=(!derived&&native!=null?native:saved)||'',label=el.getAttribute('aria-label')||'',checkSize=el.matches(titles);
+    if(!title&&!label&&!checkSize&&!derived)return;
+    const text=el.textContent||'';
+    let clipped=false;
+    if(checkSize){const width=el.clientWidth;if(width>0){const height=el.clientHeight;clipped=el.scrollWidth>width+1||height>0&&el.scrollHeight>height+1;}}
     const mode=core.mode({control:el.matches(controls),compound:el.matches(compounds),icon:!!el.querySelector('svg,.svg-icon,.cta-icon,.hearth-task-priority-dot,.hearth-task-chip-dot')||el.matches('input[type="checkbox"]'),text,label,title,clipped,help:el.matches(helpful),disabled:el.disabled===true||el.getAttribute('aria-disabled')==='true'});
     if(el.getAttribute('data-carrot-tooltip')!==mode){el.setAttribute('data-carrot-tooltip',mode);guard.refresh();}
     if(mode==='label'){
@@ -63,13 +67,20 @@ function carrotHomeBindTooltips(root) {
     }
     // Native title bubbles are separate from Obsidian's aria-label tooltips.
     // Keep a native bubble only when it carries useful additional information.
-    if(clipped&&mode==='native'&&core.normalize(text)!==title)el.setAttribute('title',core.normalize(text));
-    else if(title&&mode!=='native')el.removeAttribute('title');
+    if(mode==='native'){
+      const value=title||core.normalize(text);
+      if(value!==native)el.setAttribute('title',value);
+      if(saved!==null)el.removeAttribute(original);
+      if(title)generated.delete(el);else generated.set(el,value);
+    }else if(native!==null){
+      if(!derived)el.setAttribute(original,native);
+      generated.delete(el);el.removeAttribute('title');
+    }
   }
   function scan(node) {
     if(!node?.querySelectorAll)return;
     apply(node);
-    for(const el of node.querySelectorAll('[title],[aria-label],'+titles))apply(el);
+    for(const el of node.querySelectorAll(candidates))apply(el);
   }
   scan(root);
   const observer=new MutationObserver(records=>{
@@ -84,10 +95,18 @@ function carrotHomeBindTooltips(root) {
   });
   observer.observe(root,{subtree:true,childList:true,attributes:true,attributeFilter:['title','aria-label','disabled','aria-disabled','data-carrot-tooltip-help']});
   // Check clipping after layout and immediately before the host handles hover.
-  const hover=event=>{for(let el=event.target;el&&root.contains(el);el=el.parentElement){apply(el);if(el===root)break;}};
+  const hover=event=>{for(let el=event.target;el&&root.contains(el);el=el.parentElement){if(el.matches?.(candidates))apply(el);if(el===root)break;}};
   root.addEventListener('pointerover',hover,true);
   let disposed=false;
-  return ()=>{if(disposed)return;disposed=true;observer.disconnect();root.removeEventListener('pointerover',hover,true);root.classList.remove('carrot-selective-tooltips');guard.release();};
+  return ()=>{
+    if(disposed)return;disposed=true;observer.disconnect();root.removeEventListener('pointerover',hover,true);
+    for(const el of [root,...root.querySelectorAll('['+original+'],'+titles)]){
+      const saved=el.getAttribute(original),native=el.getAttribute('title');
+      if(saved!==null){if(native===null)el.setAttribute('title',saved);el.removeAttribute(original);}
+      else if(native!=null&&generated.get(el)===native)el.removeAttribute('title');
+    }
+    root.classList.remove('carrot-selective-tooltips');guard.release();
+  };
 }
 ;(()=>{
   const previousRender=En.prototype.render;

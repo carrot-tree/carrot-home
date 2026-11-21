@@ -17,9 +17,14 @@
     container.createDiv({cls:'hearth-settings-page-title',text:'顶部工具'});container.createDiv({cls:'hearth-settings-page-desc',text:'设置主页便签和专注区域。三栏会随窗口宽度自动调整。'});
     const body=container.createDiv({cls:'hearth-settings-tabbody cta-settings-body'});
     if(!owner){body.createEl('p',{text:'顶部工具尚未加载，请重新打开设置。'});return;}
-    if(owner.loadError)body.createEl('p',{cls:'cta-settings-error',attr:{role:'alert'},text:'便签索引暂时无法读取，原文件已保留。请检查备份后重载插件；此处不会覆盖原数据。'});
+    const recovery=body.createDiv(),message=recovery.createEl('p',{cls:'cta-settings-error',attr:{role:'alert'}});
+    const retry=CarrotStickyUI.btn(recovery,'重新载入索引',async()=>{retry.disabled=true;try{await owner.reload();}finally{retry.disabled=false;}});
     const controls=new Map(),pending=new Set();
-    const sync=()=>{for(const [flag,control] of controls){if(!pending.has(flag))control.setValue(owner.state[flag]!==false);control.setDisabled(pending.has(flag)||!!owner.loadError||(flag!=='enabled'&&!owner.state.enabled));}};
+    let capture;
+    const sync=()=>{
+      recovery.hidden=!owner.loadError;message.textContent=owner.loadError?.message||'';capture?.setDisabled(!!owner.loadError);
+      for(const [flag,control] of controls){if(!pending.has(flag))control.setValue(owner.state[flag]!==false);control.setDisabled(pending.has(flag)||!!owner.loadError||(flag!=='enabled'&&!owner.state.enabled));}
+    };
     const setFlag=async(flag,value)=>{
       pending.add(flag);sync();
       try{await owner.update(state=>({...state,[flag]:value}));}
@@ -34,13 +39,13 @@
     toggle('显示顶部工具','整体显示或隐藏；便签和 TaskNotes 计时数据会保留。','enabled');
     body.createEl('h3',{text:'随手晾晾'});
     toggle('显示随手晾晾','在主页展示便签。关闭后仍可从这里或命令面板管理。','notesEnabled',!owner.state.enabled);
-    new O.Setting(body).setName('便签管理').setDesc('备忘、临时待办、摘录都可以贴在这里。').addButton(b=>b.setButtonText('全部便签').onClick(()=>new CarrotStickyUI.Manager(owner).open())).addButton(b=>b.setButtonText('贴一张').setDisabled(!!owner.loadError).onClick(()=>new CarrotStickyUI.Editor(owner).open()));
+    new O.Setting(body).setName('便签管理').setDesc('备忘、临时待办、摘录都可以贴在这里。').addButton(b=>b.setButtonText('全部便签').onClick(()=>new CarrotStickyUI.Manager(owner).open())).addButton(b=>{capture=b;b.setButtonText('贴一张').onClick(()=>new CarrotStickyUI.Editor(owner).open());});
     new O.Setting(body).setName('原文存放位置').setDesc('Carrot Home 灵感/。沿用已有目录；收起来不会删除 Markdown。');
     body.createEl('h3',{text:'专注一刻'});
     toggle('显示专注一刻','在主页展示真实 TaskNotes 计时。隐藏不会停止当前会话。','focusEnabled',!owner.state.enabled);
     new O.Setting(body).setName('计时与时长').setDesc('单次时长在卡片“更多…”中设置；默认专注、休息时长由 TaskNotes 管理。').addButton(b=>b.setButtonText('打开计时面板').onClick(()=>{tab.app.setting.close();owner.focus.openPanel();})).addButton(b=>b.setButtonText('TaskNotes 设置').onClick(()=>owner.focus.settings()));
     body.createEl('p',{cls:'cta-settings-hint',text:'空间不足时会显示紧凑入口；也可以在命令面板搜索“随手晾晾”或“专注一刻”。'});
-    tab.__carrotTopToolsUnsubscribe=owner.subscribe(sync);
+    sync();tab.__carrotTopToolsUnsubscribe=owner.subscribe(sync);
   }
   gs.prototype.renderInto=function(container){this.__carrotTopToolsUnsubscribe?.();this.__carrotTopToolsUnsubscribe=null;if(this.activeRoute()===route)return render(this,container);return previousRender.call(this,container);};
   gs.prototype.hide=function(...args){this.__carrotTopToolsUnsubscribe?.();this.__carrotTopToolsUnsubscribe=null;return previousHide?.apply(this,args);};
