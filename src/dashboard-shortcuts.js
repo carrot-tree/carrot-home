@@ -4,7 +4,6 @@ function carrotDashboardShortcutsCore() {
   const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
   const defaults = () => [
     {id:'daily-note',label:'打开/创建今天的日记',icon:'calendar-days',commandId:'daily-notes',enabled:true},
-    {id:'resojot-record',label:'Resojot：开始/停止录音',icon:'mic',commandId:'resojot:start-recording',enabled:true},
     {id:'tasknotes-pomodoro',label:'打开 TaskNotes 番茄钟',icon:'timer',commandId:'tasknotes:open-pomodoro-view',enabled:true}
   ];
   const commands = app => (app.commands?.listCommands?.() || []).filter(item => item && typeof item.id === 'string' && item.id);
@@ -184,7 +183,7 @@ function carrotDashboardShortcutsCore() {
       const doc=view.contentEl.ownerDocument||(typeof document!=='undefined'?document:null),win=doc?.defaultView||(typeof window!=='undefined'?window:null);
       if(lifecycle.registerDomEvent){if(win)lifecycle.registerDomEvent(win,'focus',refresh);if(doc)lifecycle.registerDomEvent(doc,'visibilitychange',refresh);}
       const Observer=win?.MutationObserver;
-      if(Observer&&doc?.body){const observer=new Observer(changes=>{if(changes.some(change=>[...change.removedNodes].some(node=>node.nodeType===1&&node.matches?.('.modal-container,.modal,.modal-bg'))))refresh();});observer.observe(doc.body,{childList:true,subtree:true});lifecycle.register(()=>observer.disconnect());}
+      if(Observer&&doc?.body){const observer=new Observer(changes=>{if(changes.some(change=>[...change.removedNodes].some(node=>node.nodeType===1&&node.matches?.('.modal-container,.modal,.modal-bg'))))refresh();});observer.observe(doc.body,{childList:true,subtree:false});lifecycle.register(()=>observer.disconnect());}
     }
     return result;
   };
@@ -264,5 +263,17 @@ function carrotDashboardShortcutsCore() {
     if(this.hearthActiveTab(this.hearthTabs())!==tabId)return previousFooter.call(this,root);
     root.addClass('csh-footer');this.cshSave=button(root,'保存快捷按钮',()=>this.saveShortcuts(),'mod-cta');this.cshClose=button(root,'关闭',()=>this.close());this.shortcutSync();
   };
-  Bl.prototype.close=function(...args){if(this.cshSession?.saving)return;return previousClose.apply(this,args);};
+  Bl.prototype.close=function(...args){
+    const session=this.cshSession;
+    if(session?.saving)return;
+    if(!session?.dirty)return previousClose.apply(this,args);
+    Ee(this.app,{
+      title:'放弃未保存的快捷按钮修改？',message:'关闭后，本次表单中未保存的更改将丢失。',confirmText:'放弃修改',
+      onConfirm:()=>{
+        if(this.cshSession!==session||session.saving||!session.dirty)return;
+        session.dirty=false;
+        previousClose.apply(this,args);
+      }
+    });
+  };
 })();

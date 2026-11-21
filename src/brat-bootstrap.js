@@ -27,8 +27,13 @@
     const vault = plugin.app.vault, source = dir(plugin), marker = `${source}/share-install.json`;
     let state = null;
     if (await vault.adapter.exists(marker)) {
-      state = JSON.parse(await vault.adapter.read(marker));
-      if (state?.pending !== true) return;
+      const text = await vault.adapter.read(marker);
+      try {
+        state = JSON.parse(text);
+        if (state?.pending !== true) return;
+      } catch (error) {
+        console.error('Carrot Home 无法解析示例安装标记', error);
+      }
     }
     // Upgrades preserve the recipient's settings and never add unsolicited samples.
     if (!state && !freshSettings(await plugin.loadData())) return;
@@ -45,11 +50,25 @@
   const oldLoadSettings = bs.prototype.loadSettings;
   bs.prototype.loadSettings = async function() {
     const saved = await this.loadData();
-    if (freshSettings(saved)) {
+    const firstRun = freshSettings(saved);
+    if (firstRun) {
       await this.saveData(JSON.parse(JSON.stringify(defaults)));
     }
     await oldLoadSettings.call(this);
+    this.isFirstRun = firstRun;
   };
+  async function newFilePrefix(app, category) {
+    if (!app.vault.getAbstractFileByPath(base)?.children) {
+      const path = app.fileManager.getNewFileParent('').path;
+      return path && path !== '/' ? path + '/' : '';
+    }
+    const path = `${base}/${category}`;
+    if (!await app.vault.adapter.exists(path)) {
+      try { await app.vault.createFolder(path); }
+      catch (error) { if (!await app.vault.adapter.exists(path)) throw error; }
+    }
+    return path + '/';
+  }
   class TopicModal extends Modal {
     onOpen() {
       this.titleEl.setText('新建选题');
@@ -63,10 +82,9 @@
         if (!name || /^\.+$/.test(name)) return void new Notice('请填写一个有效的标题');
         button.setDisabled(true);
         try {
-          const target = `${base}/选题`;
-          await folder(this.app.vault, target);
-          let path = normalizePath(`${target}/${name}.md`), n = 2;
-          while (await this.app.vault.adapter.exists(path)) path = normalizePath(`${target}/${name} ${n++}.md`);
+          const prefix = await newFilePrefix(this.app, '选题');
+          let path = normalizePath(`${prefix}${name}.md`), n = 2;
+          while (await this.app.vault.adapter.exists(path)) path = normalizePath(`${prefix}${name} ${n++}.md`);
           const file = await this.app.vault.create(path, `---\ntitle: ${JSON.stringify(title.trim())}\ntype: video\nvideo_stage: idea\nproject_status: active\ncarrotProject: true\ncreated: ${localDate(0)}\ntags: [选题]\n---\n\n# ${title.trim().replace(/[\r\n]/g, ' ')}\n\n## 为什么想做\n\n## 提纲与脚本\n\n## 制作记录\n\n## 发布与复盘\n`);
           this.close();
           await this.app.workspace.getLeaf(true).openFile(file);
@@ -83,6 +101,7 @@
     this.addCommand({ id: 'share-guide', name: '打开分享版使用说明', callback: async () => {
       const file = this.app.vault.getAbstractFileByPath(`${base}/开始使用.md`);
       if (file instanceof TFile) await this.app.workspace.getLeaf(true).openFile(file);
+      else new Notice('示例使用说明已移除。你可以继续使用 Carrot Home。');
     }});
     await oldOnload.call(this);
   };
@@ -91,9 +110,9 @@
   bs.prototype.createNewDrawing = async function() {
     if (this.app.plugins.plugins['obsidian-excalidraw-plugin']) return oldDrawing.call(this);
     if (!this.app.internalPlugins.getPluginById('canvas')?.enabled) return void new Notice('请先启用 Obsidian 核心插件“白板”');
-    await folder(this.app.vault, `${base}/白板`);
-    let path = `${base}/白板/新白板.canvas`, n = 2;
-    while (await this.app.vault.adapter.exists(path)) path = `${base}/白板/新白板 ${n++}.canvas`;
+    const prefix = await newFilePrefix(this.app, '白板');
+    let path = `${prefix}新白板.canvas`, n = 2;
+    while (await this.app.vault.adapter.exists(path)) path = `${prefix}新白板 ${n++}.canvas`;
     const file = await this.app.vault.create(path, '{"nodes":[],"edges":[]}');
     await this.app.workspace.getLeaf(true).openFile(file);
   };

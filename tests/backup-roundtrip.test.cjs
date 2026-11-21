@@ -9,16 +9,25 @@ const registry = home.match(/var ls=\{([^}]+)\},Jo=Object\.keys\(ls\)/);
 assert.ok(registry, 'test the actual bundled card registry');
 const kinds = registry[1].split(',').map(entry => entry.split(':')[0]);
 const json = value => JSON.parse(JSON.stringify(value));
+const CarrotReadingDashboard = vm.runInNewContext(home.slice(home.indexOf('function CarrotReadingDashboard()'),home.indexOf('var RD='))+';CarrotReadingDashboard');
 
 function harness({input = null, saveError = null, backupError = null} = {}) {
   const notices = [], confirmations = [], writes = [], reads = [], rendered = [];
-  class SettingsTab { rerender() { this.renders = (this.renders || 0) + 1; } }
+  const files = new Map(), sectionButtons = [];
+  class SettingsTab { layoutSection() { this.baseLayout = true; } rerender() { this.renders = (this.renders || 0) + 1; } }
+  class Setting {
+    setName() {return this;} setDesc() {return this;}
+    addButton(fn) {
+      const button={setButtonText(text){this.text=text;return this;},onClick(cb){this.click=cb;return this;}};
+      fn(button);sectionButtons.push(button);return this;
+    }
+  }
   const words = {notices:{settingsImported:'设置已导入',layoutImported:'布局已导入'},editors:{kinds:{}},settings:{layout:{importButton:'导入文件'}}};
   const sandbox = {
-    Jo:kinds,je:{...defaults,wereadApiKey:''},gs:SettingsTab,
+    Jo:kinds,je:{...defaults,wereadApiKey:''},gs:SettingsTab,CarrotReadingDashboard,
     Gl(){throw new Error('legacy Gl must not run')},_m(){},$m(){},Wm(){},Km(){},jm(){},Jm(){},iT(){},
     Qd:async()=>{reads.push(true);return input},d:()=>words,Ee:(_app,options)=>confirmations.push(options),
-    L:{Notice:class {constructor(message){notices.push(message)}}},
+    L:{Setting,Notice:class {constructor(message){notices.push(message)}}},
     ls:{reading:{render(...args){rendered.push(args);return 'script-rendered'}}},
     console
   };
@@ -26,9 +35,12 @@ function harness({input = null, saveError = null, backupError = null} = {}) {
   const plugin = {settings:json(defaults),manifest:{dir:'.obsidian/plugins/carrot-home'},
     async saveData(value){writes.push({type:'settings',value:json(value)});if(saveError)throw new Error(saveError)},
     refreshViews(){this.refreshed = (this.refreshed || 0) + 1},refreshBrandIcons(){}}
-  const app = {vault:{configDir:'.obsidian',adapter:{async write(name,text){writes.push({type:'recovery',name,text});if(backupError)throw new Error(backupError)}}}};
+  const app = {vault:{configDir:'.obsidian',adapter:{
+    async write(name,text){writes.push({type:'recovery',name,text});if(backupError)throw new Error(backupError);files.set(name,text);},
+    async list(){return {files:[...files.keys()]};},async read(name){return files.get(name);},async remove(name){files.delete(name);}
+  }}};
   const tab = new SettingsTab();tab.plugin=plugin;tab.app=app;
-  return {api:sandbox,plugin,tab,notices,confirmations,writes,reads,rendered,words};
+  return {api:sandbox,plugin,tab,notices,confirmations,writes,reads,rendered,words,files,sectionButtons};
 }
 
 function fixtureCard(kind, index = 0) {
@@ -63,7 +75,9 @@ test('production export/import bindings round-trip all 29 registered card kinds 
   const {api} = harness(),original={...json(defaults),...layout()};
   const backup=api.$m(original),restored=json(defaults);
   assert.equal(api.jm(restored,backup),null);
-  assert.deepEqual(json(restored.dashboards),original.dashboards);
+  const expected = json(original.dashboards);
+  expected[0].cards.find(card=>card.kind==='reading').reading.untrustedImported = true;
+  assert.deepEqual(json(restored.dashboards),expected);
   assert.deepEqual(json(restored.pinnedCards),original.pinnedCards);
   assert.equal(JSON.parse(backup).carrotHomeBackup,1);
   assert.notEqual(restored.dashboards,original.dashboards);
@@ -75,7 +89,9 @@ test('all non-sensitive preferences, including new and unknown extension setting
   const original={...json(defaults),...layout(),focusSearchOnOpen:true,liveRefresh:true,customFileIcons:false,iconizeIconProperty:'customIcon',themeColorTarget:'both',arrangeButtonVisibility:'hover',dashboardSwitcherVisibility:'hover',headerReadability:'always',futureExtension:{version:2,options:['a','b']},homeToolbarActions:[{id:'custom',label:'定制',icon:'star',commandId:'test:command',enabled:false,extra:{keep:true}}]};
   const exported=api.Wm(original),restored=json(defaults);
   assert.equal(api.Jm(restored,exported),null);
-  for(const key of Object.keys(original).filter(key=>!['lastSeenVersion','setupStatus','hearthLayout'].includes(key)))assert.deepEqual(json(restored[key]),original[key],key);
+  const expected = json(original);
+  expected.dashboards[0].cards.find(card=>card.kind==='reading').reading.untrustedImported = true;
+  for(const key of Object.keys(original).filter(key=>!['lastSeenVersion','setupStatus','hearthLayout'].includes(key)))assert.deepEqual(json(restored[key]),expected[key],key);
 });
 
 test('credential fields never leave backup and local tokens stay attached to an unchanged service', () => {
@@ -215,4 +231,87 @@ test('disable-external-calls gates the production reading renderer before any sa
   assert.equal(h.rendered.length,0);assert.match(messages.join(' '),/已禁用外部请求/);
   assert.equal(h.api.ls.reading.render({plugin:{settings:{disableExternalCalls:false}}},{reading:{script:'old-script'}},container),'script-rendered');
   assert.equal(h.rendered.length,1);
+});
+
+test('rotation keeps five newest snapshots inside the plugin directory and leaves unrelated files alone',async()=>{
+  const h=harness({input:JSON.stringify(layout([]))}),dir=h.plugin.manifest.dir;
+  for(const n of [99,9,10,12,11,100,101])h.files.set(`${dir}/before-import-${n}-abcd.json`,'old');
+  const unrelated=[dir+'/nested/before-import-1-abcd.json',dir+'/other.json','outside/before-import-1-abcd.json'];
+  unrelated.forEach(name=>h.files.set(name,'keep'));
+  await h.tab.importFromFile({imported:h.words.notices.layoutImported});await h.confirmations[0].onConfirm();
+  assert.deepEqual([...h.files.keys()].filter(name=>!unrelated.includes(name)).sort(),
+    [12,99,100,101].map(n=>`${dir}/before-import-${n}-abcd.json`).concat(h.writes[0].name).sort());
+  unrelated.forEach(name=>assert.equal(h.files.get(name),'keep'));
+});
+
+test('rotation is optional and a list or removal failure cannot abort import',async()=>{
+  for(const failure of ['unavailable','list','remove']){
+    const h=harness({input:JSON.stringify(layout([]))}),adapter=h.tab.app.vault.adapter;
+    if(failure==='unavailable')delete adapter.list;
+    else adapter[failure]=async()=>{throw Error('cleanup failed');};
+    for(let i=1;i<7;i++)h.files.set(`${h.plugin.manifest.dir}/before-import-${i}-abcd.json`,'old');
+    await h.tab.importFromFile({imported:h.words.notices.layoutImported});await h.confirmations[0].onConfirm();
+    assert.equal(h.plugin.settings.dashboards[0].name,'完整备份');
+    assert.match(h.notices.at(-1),/布局已导入/);
+  }
+});
+
+test('rollback button previews the newest snapshot, restores optional settings and keeps local credentials',async()=>{
+  const h=harness({input:JSON.stringify({...layout([]),futureOption:'imported',title:'替换后的标题'})});
+  h.plugin.settings.title='原有标题';h.plugin.settings.wereadApiKey='local-only';
+  h.files.set(h.plugin.manifest.dir+'/before-import-1-abcd.json','bad older snapshot');
+  await h.tab.importFromFile({imported:h.words.notices.settingsImported});await h.confirmations[0].onConfirm();
+  const actual=h.writes[0].name,timestamp=Number(actual.match(/before-import-(\d+)-/)[1]);
+  h.tab.layoutSection({});assert.ok(h.tab.baseLayout);const [button]=h.sectionButtons;
+  assert.equal(button.text,'恢复上次导入前设置');await button.click();
+  assert.match(h.confirmations[1].message,/1 个仪表盘、6 张卡片/);
+  assert.ok(h.confirmations[1].message.includes(new Date(timestamp).toLocaleString()));assert.equal(h.writes.length,2);
+  assert.equal(h.plugin.settings.title,'替换后的标题');await h.confirmations[1].onConfirm();
+  assert.equal(h.writes.length,4);assert.equal(h.plugin.settings.title,'原有标题');assert.equal(h.plugin.settings.wereadApiKey,'local-only');
+  assert.equal(Object.hasOwn(h.plugin.settings,'futureOption'),false);
+  assert.equal(JSON.parse(h.writes[2].text).title,'替换后的标题');assert.ok(!h.writes[2].text.includes('local-only'));
+  await button.click();await h.confirmations[2].onConfirm();
+  assert.equal(h.plugin.settings.title,'替换后的标题');assert.equal(h.plugin.settings.futureOption,'imported');
+});
+
+test('missing and corrupt recovery snapshots show a notice without mutation',async()=>{
+  const h=harness();h.tab.layoutSection({});const [button]=h.sectionButtons;
+  await button.click();assert.match(h.notices.at(-1),/没有可用/);
+  const path=h.plugin.manifest.dir+'/before-import-100-abc.json';
+  for(const invalid of ['{','{"hearthSettings":1,"title":"partial"}']){
+    h.files.set(path,invalid);await button.click();assert.match(h.notices.at(-1),/备份|JSON/);
+  }
+  assert.equal(h.confirmations.length,0);assert.equal(h.writes.length,0);
+});
+
+test('script summary distinguishes bundled reading code, modified copies, Dataview JS and Datacore TSX',async()=>{
+  const builtin=json(CarrotReadingDashboard().cards[0]),modified=json(builtin);
+  modified.id+='-modified';modified.reading.script+='\n// modified';modified.reading.untrustedImported=false;
+  const dv=fixtureCard('dataview'),dc=fixtureCard('datacore');dv.dataview.language='js';dc.datacore.language='tsx';
+  const payload={...layout([builtin,dv,dc]),pinnedCards:[modified]},h=harness({input:JSON.stringify(payload)});
+  await h.tab.importFromFile({imported:h.words.notices.layoutImported});
+  const [prompt]=h.confirmations;assert.match(prompt.message,/3 张包含可执行脚本/);
+  for(const phrase of ['自定义阅读脚本 1 张','Dataview JS 1 张','Datacore JS/TS 1 张','立即运行'])assert.ok(prompt.message.includes(phrase));
+  await prompt.onConfirm();assert.equal(h.plugin.settings.pinnedCards[0].reading.untrustedImported,true);
+  assert.equal(h.plugin.settings.dashboards[0].cards[0].reading.untrustedImported,undefined);
+});
+
+test('imported reading code only executes after explicit session trust and changing the script requires new consent',()=>{
+  const h=harness(),config=fixtureCard('reading');config.reading.untrustedImported=false;
+  assert.equal(h.api.Km(h.plugin.settings,{cards:[config]}),null);
+  const card=h.plugin.settings.dashboards[0].cards[0];assert.equal(card.reading.untrustedImported,true);
+  const ctx={app:h.tab.app,plugin:h.plugin},ui={};
+  const container={
+    empty(){},createDiv(){return this;},
+    createEl(tag,options){if(tag==='button')return {addEventListener:(_name,fn)=>{ui.click=fn;}};if(tag==='pre')ui.script=options.text;return this;}
+  };
+  const render=()=>h.api.ls.reading.render(ctx,card,container);
+  render();assert.equal(ui.script,config.reading.script);assert.equal(h.rendered.length,0);
+  ui.click();assert.equal(h.rendered.length,0);
+  card.reading.script+='\n// changed';h.confirmations[0].onConfirm();assert.equal(h.rendered.length,0);
+  render();ui.click();h.confirmations[1].onConfirm();assert.equal(h.rendered.length,1);
+  render();assert.equal(h.rendered.length,2);
+  card.reading.script+='\n// changed again';render();assert.equal(h.rendered.length,2);
+  ui.click();ctx.plugin.settings.disableExternalCalls=true;h.confirmations[2].onConfirm();assert.equal(h.rendered.length,2);
+  assert.equal(card.reading.untrustedImported,true,'session trust is never exported in a backup');
 });

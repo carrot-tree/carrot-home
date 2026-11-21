@@ -2,16 +2,17 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../src/workbench-polish.js'),'utf8');
-function harness(){
+function harness(releaseNotes){
   const events={},bookmarkEvents={},subscriptions=[],commands=[],refreshes=[],cleanups=[],timers=new Map;let nextTimer=0;
   class View{constructor(){this.plugin={settings:{}};this.contentEl={querySelector:()=>null};this.cardRefreshers=new Map;this.scrollTop=137;this.search='正在检索';}render(){this.fullRenders=(this.fullRenders||0)+1;}refreshCards(kinds){refreshes.push(kinds);return kinds.length;}onPaneMenu(menu){menu.items.push({title:'原有菜单'});}}
   class Plugin{async onload(){}register(fn){cleanups.push(fn)}addCommand(c){commands.push(c);}registerEvent(s){subscriptions.push(s);}}
   class Settings{homeSection(){}}
   const sandbox={window:{setTimeout:fn=>{const id=++nextTimer;timers.set(id,fn);return id},clearTimeout:id=>timers.delete(id)},bs:Plugin,En:View,gs:Settings,Io:()=>({kind:'none'}),le:settings=>settings.lowPower===true,require:()=>({Notice:class{},Setting:class{}})};
+  if(releaseNotes)Object.assign(sandbox,{jl:releaseNotes,nf:(a,b)=>a.localeCompare(b,undefined,{numeric:true})>0});
   vm.createContext(sandbox);vm.runInContext(source,sandbox);
   const plugin=new Plugin;plugin.settings={liveRefresh:true};plugin.seenActiveHomeLeaves=new WeakSet;plugin.refreshDataCards=k=>{refreshes.push(k);return k.length};plugin.liveRefreshDebounced=()=>plugin.runLiveRefresh();
   plugin.app={workspace:{on:(kind,callback)=>{events[kind]=callback;return{kind}},onLayoutReady:callback=>callback()},internalPlugins:{getPluginById:()=>({instance:{on:(kind,callback)=>{bookmarkEvents[kind]=callback;return{kind:'bookmark-'+kind}}}})}};
-  return{plugin,View,cleanups,events,bookmarkEvents,subscriptions,commands,refreshes,flush:()=>{for(const fn of timers.values())fn();timers.clear()},core:sandbox.carrotWorkbenchCore()};
+  return{plugin,View,cleanups,events,bookmarkEvents,subscriptions,commands,refreshes,releaseNotes:sandbox.jl,flush:()=>{for(const fn of timers.values())fn();timers.clear()},core:sandbox.carrotWorkbenchCore()};
 }
 test('returning Home refreshes local data even when live refresh is off, preserving the view and search',()=>{
   const h=harness(),view=new h.View;h.plugin.settings.liveRefresh=false;
@@ -49,4 +50,11 @@ test('a deferred focus repaint is canceled when focus moves or the plugin unload
   const h=harness();await h.plugin.onload();const leaf={view:new h.View};
   h.plugin.maybeRefreshOnFocus(leaf);h.plugin.app.workspace.activeLeaf={view:{}};h.flush();assert.equal(h.refreshes.length,0);
   h.plugin.app.workspace.activeLeaf=leaf;h.plugin.maybeRefreshOnFocus(leaf);h.cleanups.forEach(fn=>fn());h.flush();assert.equal(h.refreshes.length,0);
+});
+
+test('release notes preserve the shared 2.2.0 entry and insert a sorted fallback only when missing',()=>{
+ const notes=[{version:'2.2.2'},{version:'2.2.0',markdown:'统一文案'}];
+ assert.equal(harness(notes).releaseNotes,notes);
+ const patched=harness([{version:'2.1.9'},{version:'2.2.2'}]).releaseNotes;
+ assert.deepEqual(Array.from(patched,entry=>entry.version),['2.2.2','2.2.0','2.1.9']);
 });

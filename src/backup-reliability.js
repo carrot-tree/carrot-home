@@ -1,6 +1,6 @@
 /* Backups are JSON documents, not a second, lossy card configuration format.
  * Validate a complete candidate before changing any live settings. */
-function carrotBackupReliabilityCore({kinds, defaults = {}}) {
+function carrotBackupReliabilityCore({kinds, defaults = {}, builtInReadingScripts = new Set()}) {
   const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
   const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const blocked = new Set(['__proto__', 'prototype', 'constructor']);
@@ -8,6 +8,7 @@ function carrotBackupReliabilityCore({kinds, defaults = {}}) {
   const layoutKeys = ['dashboards', 'activeDashboardId', 'pinnedCards', 'gridColumns', 'rowHeight', 'fitToPage', 'maxWidth', 'favorites'];
   const secret = key => /^(wereadapikey|pat|apikey|accesstoken|refreshtoken|authtoken|bearertoken|authorization|password|secret|clientsecret|token|credentials)$/.test(key.replace(/[-_]/g, '').toLowerCase());
   const fail = message => { throw new Error(message); };
+  const customReading = item => item.kind === 'reading' && item.reading?.script?.trim() && !builtInReadingScripts.has(item.reading.script);
   function copy(value, stripSecrets = false) {
     let nodes = 0;
     const seen = new Set();
@@ -92,6 +93,7 @@ function carrotBackupReliabilityCore({kinds, defaults = {}}) {
     for (const key of ['fx','fw','cardOpacity']) numeric(result, key, path, 0, 1);
     fields(result, {editable:'boolean',livePreview:'boolean',hideBaseHeader:'boolean',tileAutoFlow:'boolean',showOpenButton:'boolean',sandboxTrusted:'boolean',pinned:'boolean'}, path);
     validateConfig(result, path);
+    if (customReading(result)) result.reading.untrustedImported = true;
     for (const [key, fallback] of Object.entries({x:-1,y:-1,w:4,h:2})) if (!own(result, key)) result[key] = fallback;
     return result;
   }
@@ -169,8 +171,15 @@ function carrotBackupReliabilityCore({kinds, defaults = {}}) {
     expect(value, 'object', '备份');
     return copy(value, true);
   }
-  function prepare(current, input, settingsMode = false) {
+  function prepare(current, input, settingsMode = false, restoreSnapshot = false) {
     const payload = parse(input), next = copy(current);
+    if (restoreSnapshot) {
+      if (payload.carrotHomeBackup !== 1 || payload.hearthSettings !== 1 || !Array.isArray(payload.dashboards)) fail('导入前备份不完整，请选择其它备份文件');
+      // A full snapshot also restores the absence of optional preferences.
+      for (const key of Object.keys(next)) {
+        if (!own(payload,key) && !metadata.has(key) && !secret(key)) delete next[key];
+      }
+    }
     const hasLayout = own(payload, 'dashboards') || own(payload, 'cards');
     if (!hasLayout && (!settingsMode || typeof payload.hearthSettings !== 'number')) fail('这不是 Carrot Home 布局或设置备份');
     validatePreferences(payload);
@@ -230,14 +239,23 @@ function carrotBackupReliabilityCore({kinds, defaults = {}}) {
     const cards = [...(boards ? boards.flatMap(item => item.cards || []) : payload.cards || []), ...(payload.pinnedCards || [])];
     const counts = new Map();
     for (const item of cards) counts.set(item.kind, (counts.get(item.kind) || 0) + 1);
-    const scripts = cards.filter(item => item.reading?.script || item.dataview?.query && item.dataview.language === 'js' || item.datacore?.query && item.datacore.language && item.datacore.language !== 'query').length;
-    return {settings:settingsMode,dashboards:boards?.length ?? (Array.isArray(payload.cards) ? 1 : 0),cards:cards.length,types:Object.fromEntries(counts),scripts};
+    const scriptTypes = {};
+    for (const item of cards) {
+      let type;
+      if (customReading(item)) type = '自定义阅读脚本';
+      if (item.kind === 'dataview' && item.dataview?.query?.trim() && item.dataview.language === 'js') type = 'Dataview JS';
+      if (item.kind === 'datacore' && item.datacore?.query?.trim() && (item.datacore.language ?? 'query') !== 'query') type = 'Datacore JS/TS';
+      if (type) scriptTypes[type] = (scriptTypes[type] || 0) + 1;
+    }
+    const scripts = Object.values(scriptTypes).reduce((total, count) => total + count, 0);
+    return {settings:settingsMode,dashboards:boards?.length ?? (Array.isArray(payload.cards) ? 1 : 0),cards:cards.length,types:Object.fromEntries(counts),scripts,scriptTypes};
   }
   return {copy,card,prepare,commit,apply,parse,exportLayout,exportSettings,summary};
 }
 
 ;(() => {
-  const core = carrotBackupReliabilityCore({kinds:Jo,defaults:je});
+  const builtInReadingScripts = new Set(typeof CarrotReadingDashboard === 'function' ? CarrotReadingDashboard().cards.map(card => card.reading?.script) : []);
+  const core = carrotBackupReliabilityCore({kinds:Jo,defaults:je,builtInReadingScripts});
   Gl = (value, index) => core.card(value, index);
   _m = settings => core.exportLayout(settings);
   $m = settings => JSON.stringify(core.exportLayout(settings), null, 2);
@@ -250,31 +268,79 @@ function carrotBackupReliabilityCore({kinds, defaults = {}}) {
     if (error) throw new Error(error);
   };
 
-  // Review and persistence are deliberately separate. A failed write leaves the
-  // current settings object and every rendered dashboard intact.
+  const pluginDir = tab => tab.plugin.manifest.dir || `${tab.app.vault.configDir}/plugins/carrot-home`;
+  const lastRecoveryTime = new WeakMap();
+  async function recoveryFiles(adapter, dir) {
+    if (!adapter.list) return [];
+    const entries = [], prefix = dir + '/';
+    for (const path of (await adapter.list(dir)).files) {
+      if (!path.startsWith(prefix)) continue;
+      const match = /^before-import-(\d+)-[a-z0-9]+\.json$/.exec(path.slice(prefix.length));
+      if (match && Number.isFinite(new Date(Number(match[1])).getTime())) entries.push({path, time:Number(match[1])});
+    }
+    return entries.sort((a,b) => b.time - a.time || b.path.localeCompare(a.path));
+  }
+  async function pruneRecovery(adapter, dir) {
+    if (!adapter.remove) return;
+    try {
+      const old = (await recoveryFiles(adapter, dir)).slice(5);
+      for (const file of old) {
+        try { await adapter.remove(file.path); } catch {}
+      }
+    } catch {}
+  }
+  const previousLayoutSection = gs.prototype.layoutSection;
+  gs.prototype.layoutSection = function(container, ...args) {
+    const result = previousLayoutSection.call(this, container, ...args);
+    new L.Setting(container).setName('恢复上次导入前设置').setDesc('查看最近一次自动备份的时间和内容，然后确认恢复。')
+      .addButton(button => button.setButtonText('恢复上次导入前设置').onClick(async () => {
+        if (this.__carrotImportPending) return;
+        const adapter = this.app.vault.adapter;
+        try {
+          const [latest] = await recoveryFiles(adapter, pluginDir(this));
+          if (!latest) return void new L.Notice('没有可用的导入前备份。');
+          const text = await adapter.read(latest.path);
+          reviewImport.call(this, text, {title:'恢复上次导入前设置？',message:`备份时间为 ${new Date(latest.time).toLocaleString()}。`,imported:'已恢复上次导入前设置',confirmText:'恢复设置'}, true, true);
+        } catch (error) { new L.Notice(`无法读取导入前备份：${error.message}`, 10000); }
+      }));
+    return result;
+  };
   gs.prototype.importFromFile = async function(options) {
     if (this.__carrotImportPending) return;
     const text = await Qd();
     if (text === null) return;
-    const settingsMode = options.imported === d().notices.settingsImported;
+    reviewImport.call(this, text, options, options.imported === d().notices.settingsImported);
+  };
+  function reviewImport(text, options, settingsMode, restoreSnapshot = false) {
     let prepared;
-    try { prepared = core.prepare(this.plugin.settings, text, settingsMode); }
+    try { prepared = core.prepare(this.plugin.settings, text, settingsMode, restoreSnapshot); }
     catch (error) { new L.Notice(`${error.message}；当前设置未改变。`, 10000); return; }
     const fingerprint = JSON.stringify(this.plugin.settings), info = prepared.summary;
     const typeNames = Object.entries(info.types).map(([kind, count]) => `${d().editors.kinds[kind] || kind} ${count}`).join('、');
     let message = `${String(options.message || '').replace(/无法撤销[。！!]?/g, '').trim()} 将恢复 ${info.dashboards} 个仪表盘、${info.cards} 张卡片${typeNames ? `（${typeNames}）` : ''}。`;
-    if (info.scripts) message += ` 其中 ${info.scripts} 张包含可执行脚本，请仅恢复你信任的备份。`;
+    if (info.scripts) {
+      const details = Object.entries(info.scriptTypes).map(([type, count]) => `${type} ${count} 张`).join('、');
+      message += ` 其中 ${info.scripts} 张包含可执行脚本（${details}）。脚本可能读写笔记、使用本机凭据或访问网络。仅在信任来源时继续。`;
+      if (info.scriptTypes['Dataview JS'] || info.scriptTypes['Datacore JS/TS']) message += ' 启用相应插件后，Dataview 或 Datacore 脚本可能在打开卡片时立即运行。';
+      if (info.scriptTypes['自定义阅读脚本']) message += ' 自定义阅读脚本将暂停，直至你在卡片中确认运行。';
+    }
     message += ' API Key、令牌等凭据不从备份导入。确认后会先保存一份当前设置的恢复备份。便签原文和顶部索引不包含在设置备份中。';
-    Ee(this.app, {title:options.title,message,confirmText:d().settings.layout.importButton,onConfirm:async () => {
+    Ee(this.app, {title:options.title,message,confirmText:options.confirmText || d().settings.layout.importButton,onConfirm:async () => {
       if (this.__carrotImportPending) return;
       this.__carrotImportPending = true;
       let recovery = '', persisted = false, conflict = false;
       try {
         if (JSON.stringify(this.plugin.settings) !== fingerprint) throw new Error('设置已在其它位置变化，请重新选择备份查看摘要');
-        prepared = core.prepare(this.plugin.settings, text, settingsMode);
-        const dir = this.plugin.manifest.dir || `${this.app.vault.configDir}/plugins/carrot-home`;
-        recovery = `${dir}/before-import-${Date.now()}-${Math.random().toString(36).slice(2,8)}.json`;
-        await this.app.vault.adapter.write(recovery, core.exportSettings(this.plugin.settings));
+        prepared = core.prepare(this.plugin.settings, text, settingsMode, restoreSnapshot);
+        const dir = pluginDir(this), adapter = this.app.vault.adapter;
+        // Two quick restores can land in the same millisecond. The newest
+        // snapshot must still sort first, independent of its random suffix.
+        const time = Math.max(Date.now(), (lastRecoveryTime.get(adapter) || 0) + 1);
+        lastRecoveryTime.set(adapter,time);
+        const path = `${dir}/before-import-${time}-${Math.random().toString(36).slice(2,8) || '0'}.json`;
+        await adapter.write(path, core.exportSettings(this.plugin.settings));
+        recovery = path;
+        await pruneRecovery(adapter, dir);
         if (JSON.stringify(this.plugin.settings) !== fingerprint) throw new Error('设置已在保存恢复备份时变化，请重新选择备份查看摘要');
         await this.plugin.saveData(prepared.settings);
         persisted = true;
@@ -296,15 +362,34 @@ function carrotBackupReliabilityCore({kinds, defaults = {}}) {
         new L.Notice(conflict && persisted ? `导入发生并发冲突：${error.message}。恢复备份：${recovery}` : persisted ? `设置已保存，界面刷新未完成：${error.message}。请重新打开主页。` : `未导入：${error.message}。当前设置保持不变。${recovery ? `恢复备份：${recovery}` : ''}`, 15000);
       } finally { this.__carrotImportPending = false; }
     }});
-  };
+  }
 
   // This gate also covers reading scripts already saved in a recipient's vault.
-  const reading = ls.reading, previousReadingRender = reading?.render;
+  const reading = ls.reading, previousReadingRender = reading?.render, trustedScripts = new WeakMap();
   if (previousReadingRender) reading.render = function(ctx, card, container, ...args) {
     if ((ctx.plugin || ctx.app.plugins?.plugins?.['carrot-home'])?.settings?.disableExternalCalls) {
       const box = container.createDiv('hearth-reading');
       box.createDiv({cls:'hearth-reading-hint',text:'已禁用外部请求，微信读书卡片已暂停。'});
       box.createDiv({cls:'hearth-reading-hint',text:'如需读取数据，请在 Carrot Home → 行为中关闭“禁用外部请求”。'});
+      return;
+    }
+    const config = card.reading, script = config?.script;
+    if (config?.untrustedImported === true && script && trustedScripts.get(config) !== script) {
+      const box = container.createDiv('hearth-reading');
+      box.createDiv({cls:'hearth-reading-hint',text:'此卡片包含从备份导入的自定义脚本，已暂停运行。请先检查代码及来源。'});
+      const details = box.createEl('details');
+      details.createEl('summary', {text:'查看脚本'});
+      details.createEl('pre', {text:script});
+      const button = box.createEl('button', {text:'本次会话信任此脚本',attr:{type:'button'}});
+      button.addEventListener('click', () => Ee(ctx.app, {
+        title:'信任并运行这个阅读脚本？',message:'此脚本可以读写笔记、使用本机凭据并访问网络。请仅信任你已检查的代码。',confirmText:'信任并运行',
+        onConfirm:() => {
+          if (button.isConnected === false || card.reading !== config || config.script !== script) return;
+          trustedScripts.set(config, script);
+          container.empty();
+          reading.render.call(this, ctx, card, container, ...args);
+        }
+      }));
       return;
     }
     return previousReadingRender.call(this, ctx, card, container, ...args);

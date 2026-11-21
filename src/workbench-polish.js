@@ -9,12 +9,12 @@ function carrotWorkbenchCore() {
 }
 ;(()=>{
   const O=require('obsidian'),core=carrotWorkbenchCore();
-  if(typeof jl!=='undefined'&&Array.isArray(jl))jl=[{version:'2.2.0',date:'2026-11-12',markdown:`### 安心工作台
+  if(typeof jl!=='undefined'&&Array.isArray(jl)&&!jl.some(entry=>entry.version==='2.2.0'))jl=[{version:'2.2.0',date:'2026-11-12',markdown:`### 安心工作台
 - 还原前先看摘要，恢复带任务的布局和卡片配置；应用前保留可恢复的本地备份。
 - 便签保存期间保护输入，原文成功后可单独重试草稿清理，编辑器跟随原笔记改名。
 - 返回主页局部刷新本地数据，更多菜单可主动刷新；专注和搜索继续保留。
 - 标题可读性保护随背景自动启用，也可在外观设置中关闭。
-- 修正循环任务日期、自定义项目字段、长期重复和午夜日历边界。`},...jl.filter(entry=>entry.version!=='2.2.0')].sort((a,b)=>nf(a.version,b.version)?-1:nf(b.version,a.version)?1:0);
+- 修正循环任务日期、自定义项目字段、长期重复和午夜日历边界。`},...jl].sort((a,b)=>nf(a.version,b.version)?-1:nf(b.version,a.version)?1:0);
   const applyTitle=view=>{
     const title=view.contentEl?.querySelector('.hearth-title');
     if(title)title.classList.toggle('carrot-title-protected',core.protectTitle(view.plugin.settings,Io(view.plugin.settings)));
