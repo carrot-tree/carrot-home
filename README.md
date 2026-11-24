@@ -2,13 +2,22 @@
 
 **把今天的任务、项目进度和常用笔记，放在同一个 Obsidian 首页。**
 
+> [!IMPORTANT]
+> **安装前必看：想要和截图／视频里一样的完整画面效果，必须同时安装并启用配套插件！**
+>
+> 只安装 Carrot Home 本体时，首页会自动生成相同比例的六卡片默认布局，但右侧核心区域需要配套插件驱动，未安装时只会显示提示：
+> 1. **TaskNotes**（Obsidian 社区插件市场搜索安装并启用）：驱动右侧 **Tasks 任务看板／日期清单**、右上角 **专注一刻** 番茄钟与日历任务同步。
+> 2. **Carrot Gantt**（通过 BRAT 添加 `carrot-tree/carrot-gantt` 并启用）：驱动右下角 **项目甘特图**。
+> 3. **Obsidian 核心插件与左侧按钮**：按需开启核心插件 **书签**、**日记**、**白板**、**录音机**；如果看不到 Obsidian 最左侧竖条里的 **🥕 图标**，请确认已在社区插件列表启用 Carrot Home，并在 **设置 → 外观 → 界面** 打开 **显示功能区（Show ribbon）**。
+> 4. **背景壁纸与主题色**：展示图里的插画壁纸和浅绿强调色属于演示自定义外观，默认安装使用内置渐变背景，可在 **设置 → Carrot Home → 背景** 和 Obsidian 外观设置中自行更换。
+
 Carrot Home 基于 [ondreu/Hearth](https://github.com/ondreu/Hearth) 定制，在首页中组合时钟、日历、书签、最近笔记、TaskNotes 任务工作区与 Carrot Gantt 项目甘特图。保留 Hearth 的来源说明与 MIT 版权声明。
 
 [安装与更新](#安装与更新) · [效果展示](#效果展示) · [任务工作区详解](docs/tasks.md) · [最新 Release](https://github.com/carrot-tree/carrot-home/releases/latest)
 
 ![Carrot Home 首页：自定义背景、时钟、日历、任务看板、书签、最近笔记与项目甘特图](docs/images/home-overview.png)
 
-> 配图来自 Obsidian 桌面端的独立演示库，使用虚构项目、任务和示例账号，不包含私人笔记或凭据。截图中的背景与布局经过演示配置，背景仅用于文档展示，不是插件默认背景。任务与甘特图分别需要独立安装 TaskNotes 和 Carrot Gantt。
+> 配图来自 Obsidian 桌面端的独立演示库，使用虚构项目、任务和示例账号，不包含私人笔记或凭据。截图中的背景与配色经过演示配置，不是插件默认背景。任务看板、专注圆盘与项目甘特图分别需要独立安装启用 **TaskNotes** 和 **Carrot Gantt**。
 
 ## 能做什么
 
@@ -73,7 +82,7 @@ iPad 等平板按实际可用空间展示两侧工具，较窄时使用紧凑入
 3. 选择跟踪最新版本，添加后在社区插件列表启用 **Carrot Home**。
 4. 从左侧功能区或命令面板打开 **Carrot Home**。
 
-当前版本为 **2.2.2**。标题可读性保护默认关闭，标题保持纯文字；可从 **设置 → Carrot Home → 外观 → 标题可读性保护** 手动开启，升级保留已有明确选择。下载与发布说明请查看 [Release](https://github.com/carrot-tree/carrot-home/releases/latest)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
+当前版本为 **2.2.3**。新安装会自动套用单页六卡片默认布局，未安装 TaskNotes 或 Carrot Gantt 时对应卡片会直接提示所需插件；标题可读性保护默认关闭，可从 **设置 → Carrot Home → 外观 → 标题可读性保护** 手动开启，升级保留已有明确选择。下载与发布说明请查看 [Release](https://github.com/carrot-tree/carrot-home/releases/latest)。BRAT 的自动检查开关决定是否自动检查更新；固定历史版本的条目不会跟随最新版。
 
 ### 按需安装配套插件
 

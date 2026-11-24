@@ -141,7 +141,7 @@ test('upgrade, command and settings About render the same ordered release entrie
     modal.close();return result;
   }
   const automatic=entries(), versions=automatic.map(([version])=>version);
-  assert.deepEqual(versions.slice(0,3),['2.2.2','2.2.1','2.2.0']);
+  assert.deepEqual(versions.slice(0,3),['2.2.3','2.2.2','2.2.1']);
   assert.equal(new Set(versions).size,versions.length);
   h.commands.get('show-whats-new').callback(); assert.deepEqual(entries(),automatic);
   h.app.saveLocalStorage('hearth-settings-tab','about'); h.tab.display();
@@ -176,5 +176,21 @@ test('header note opening honors the shared card pane preference',async t=>{
   const h=await openRuntime(t,{cards:[],settings:{openIn:'same',openInOverrides:{card:'split'}}});
   await h.plugin.topArea.openFile(h.ordinary.path);
   assert.deepEqual(h.openedFiles,[{file:h.ordinary,pane:'split'}]);
+  await h.unload();
+});
+
+test('missing companion plugins show clear TaskNotes and Carrot Gantt install hints', async t => {
+  const h = await openRuntime(t,{cards:[
+    {kind:'tasks',title:'Tasks',tasks:{source:'tasknotes',layout:'kanban'}},
+    {kind:'leaf',title:'项目甘特图',leafView:{viewType:'hearth-gantt-view',hideHeader:true}}
+  ]});
+  h.app.plugins.enabledPlugins.delete('tasknotes');
+  delete h.app.plugins.plugins.tasknotes;
+  h.view.render(); await settle();
+  const texts = [...h.view.contentEl.querySelectorAll('.hearth-card')].map(el => el.textContent);
+  assert.match(texts[0], /TaskNotes/);
+  assert.match(texts[1], /Carrot Gantt.*carrot-tree\/carrot-gantt/);
+  const guide = require('../resources/sample-notes.json').find(n => n.path === 'Carrot Home 示例/开始使用.md');
+  assert.match(guide.content.slice(0, 420), /TaskNotes[\s\S]*Carrot Gantt/);
   await h.unload();
 });
